@@ -2103,7 +2103,7 @@
         let currentMalId = 33352;
         let currentEpisode = 1;
         let currentAudio = "sub";
-        let currentProvider = "aniwaves";
+        let currentProvider = "auto";
         let artPlayer = null;
         let activeStreams = [];
         let currentSubtitles = [];
@@ -2303,7 +2303,7 @@
         // STREAM EXTRACTION & PLAYER
         // ==========================================
         async function loadStream(ep) {
-            document.getElementById('streamInfoStatus').textContent = `Extracting Episode ${ep} from ${currentProvider}...`;
+            document.getElementById('streamInfoStatus').textContent = `Extracting Episode ${ep}...`;
 
             let url = `${API_BASE}/anime/extract/${currentAnimeId}?e=${ep}&type=${currentAudio}`;
             if (currentProvider && currentProvider !== 'auto') {
@@ -2311,7 +2311,11 @@
             }
 
             try {
-                const res = await fetch(url);
+                let res = await fetch(url);
+                if (!res.ok) {
+                    const fallbackUrl = `${API_BASE}/api/anime/stream?id=${currentAnimeId}&episode=${ep}&type=${currentAudio}&key=${activeApiKey}`;
+                    res = await fetch(fallbackUrl);
+                }
                 if (!res.ok) {
                     throw new Error(`Server returned HTTP ${res.status}`);
                 }

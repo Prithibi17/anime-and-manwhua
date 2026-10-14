@@ -349,7 +349,12 @@
                     let extractUrl = `/anime/extract/${animeId}?e=${episode}&type=${audio}`;
                     if (apiKey) extractUrl += `&key=${encodeURIComponent(apiKey)}`;
                     
-                    const res = await fetch(extractUrl);
+                    let res = await fetch(extractUrl);
+                    if (!res.ok) {
+                        let streamApiUrl = `/api/anime/stream?id=${animeId}&episode=${episode}&type=${audio}`;
+                        if (apiKey) streamApiUrl += `&key=${encodeURIComponent(apiKey)}`;
+                        res = await fetch(streamApiUrl);
+                    }
                     if (!res.ok) {
                         throw new Error(`Extraction failed (HTTP ${res.status})`);
                     }

@@ -135,6 +135,14 @@ async def get_skip_times(id: int, episode: int, mal_id: int | None = None):
 # ==========================================================
 # STREAM PROXIES (M3U8, SEGMENTS, MP4)
 # ==========================================================
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "*/*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Connection": "keep-alive"
+}
+
+
 def _norm_url(url: str) -> str | None:
     url = (url or "").strip()
     if url.startswith("//"):

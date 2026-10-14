@@ -379,11 +379,62 @@ async def api_anime_stream(
     host = str(request.base_url).rstrip("/")
     key = auth.get("key", "")
 
-    # 1. Extract sources
+    # 1. Extract sources via native provider race
+    extract_res = None
     try:
-        extract_res = await provider_race.extract_sources(id, episode, type)
+        raced = await asyncio.wait_for(provider_race.race_watch(id, episode, type, preferred=server), timeout=30.0)
+        if raced and raced.get("streams"):
+            extract_res = {
+                "provider": raced.get("provider", "native"),
+                "streams": raced["streams"],
+                "subtitles": provider_race.merge_subtitles(raced["streams"])
+            }
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Stream extraction failed: {str(e)}")
+        print(f"[API] race_watch failed for {id} ep {episode}: {e}")
+
+    # 2. Fallback to miruro pipe targets if native race returned no streams
+    if not extract_res or not extract_res.get("streams"):
+        try:
+            from src.endpoints import fetch_raw_episodes, encode_pipe_request, iter_miruro_pipe_targets, decode_pipe_response
+            import base64
+            import httpx
+            raw_eps = await asyncio.wait_for(fetch_raw_episodes(id), timeout=8.0)
+            provs = (raw_eps or {}).get("providers", {})
+            ranking = ["zoro", "bee", "telli", "arc", "yugen", "jet", "neo", "kiwi"]
+            for prov in ranking:
+                if prov in provs:
+                    eps_data = (provs[prov].get("episodes") or {}).get(type) or (provs[prov].get("episodes") or {}).get("sub")
+                    if isinstance(eps_data, list):
+                        for ep_item in eps_data:
+                            if ep_item.get("number") == episode and ep_item.get("id"):
+                                enc_id = base64.urlsafe_b64encode(ep_item["id"].encode()).decode().rstrip('=')
+                                payload = {
+                                    "path": "sources",
+                                    "method": "GET",
+                                    "query": {
+                                        "episodeId": enc_id,
+                                        "provider": prov,
+                                        "category": type,
+                                        "anilistId": id,
+                                    },
+                                    "body": None,
+                                    "version": "0.1.0",
+                                }
+                                req_enc = encode_pipe_request(payload)
+                                async with httpx.AsyncClient(timeout=8.0) as client:
+                                    for pipe_target, pheaders in iter_miruro_pipe_targets(req_enc):
+                                        res = await client.get(pipe_target, headers=pheaders)
+                                        if res.status_code == 200:
+                                            decoded = decode_pipe_response(res.text.strip())
+                                            if decoded and decoded.get("streams"):
+                                                extract_res = decoded
+                                                break
+                                if extract_res:
+                                    break
+                if extract_res:
+                    break
+        except Exception as e:
+            print(f"[API] fallback pipe failed: {e}")
 
     if not extract_res or not extract_res.get("streams"):
         raise HTTPException(status_code=404, detail="No video streams found for this episode.")
