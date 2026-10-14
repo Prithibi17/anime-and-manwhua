@@ -6,9 +6,13 @@ __pycache__/
 .Python
 
 # Virtual environments
+.venv/
 venv/
 env/
 ENV/
+
+# Reference repositories
+external_repos/
 
 # IDE
 .vscode/

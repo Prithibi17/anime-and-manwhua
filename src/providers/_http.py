@@ -16,7 +16,7 @@ async def fetch_text(url: str, headers: dict | None = None, timeout: float = 20.
     h = dict(HTML_HEADERS)
     if headers:
         h.update(headers)
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, verify=False) as client:
         res = await client.get(url, headers=h)
     if res.status_code != 200:
         raise RuntimeError(f"HTTP {res.status_code} fetching {url}")
@@ -27,7 +27,7 @@ async def fetch_json(url: str, headers: dict | None = None, timeout: float = 20.
     h = {"User-Agent": UA, "Accept": "application/json"}
     if headers:
         h.update(headers)
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, verify=False) as client:
         res = await client.get(url, headers=h)
     if res.status_code != 200:
         raise RuntimeError(f"HTTP {res.status_code} fetching {url}")

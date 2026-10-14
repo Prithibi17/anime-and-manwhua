@@ -15,7 +15,7 @@ async def fetch_servers(anilist_id: int) -> list:
 
 
 async def fetch_player_links(provider_link: str) -> list:
-    data = await fetch_json(f"{BASE}/apilink.php?data={quote(provider_link, safe="-_.!~*'()")}")
+    data = await fetch_json(f"{BASE}/apilink.php?data={quote(provider_link, safe='-_.!~*()')}")
     return data if isinstance(data, list) else []
 
 

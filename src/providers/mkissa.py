@@ -137,7 +137,7 @@ def api_headers(build_id: str, extra=None):
 
 
 async def _session_get_text(url, headers=None, timeout=FETCH_TIMEOUT):
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, verify=False) as client:
         res = await client.get(url, headers=browser_headers(headers or {}))
     store_cookies(res.headers)
     if res.status_code != 200:
@@ -147,7 +147,7 @@ async def _session_get_text(url, headers=None, timeout=FETCH_TIMEOUT):
 
 async def _api_request(method, url, headers=None, json_body=None, timeout=FETCH_TIMEOUT):
     merged = browser_headers(headers or {})
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, verify=False) as client:
         if method == "POST":
             res = await client.post(url, headers=merged, json=json_body)
         else:
@@ -157,14 +157,14 @@ async def _api_request(method, url, headers=None, json_body=None, timeout=FETCH_
 
 
 async def _raw_get(url, headers=None, timeout=EXTRACT_TIMEOUT):
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, verify=False) as client:
         res = await client.get(url, headers=headers or {})
     store_cookies(res.headers)
     return res
 
 
 async def _raw_post(url, payload, headers=None, timeout=EXTRACT_TIMEOUT):
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, verify=False) as client:
         res = await client.post(url, headers=headers or {}, json=payload)
     store_cookies(res.headers)
     return res
@@ -1358,8 +1358,8 @@ async def fetch_bootstrap(lane: str = CONTENT_LANE, force: bool = False) -> dict
         for epoch in current_epochs():
             res = await _api_request(
                 "GET",
-                f"{API}/client-crypto/v1/bootstrap?buildId={quote(str(config['buildId']), safe="'")}"
-                f"&k={quote(str(lane), safe="'")}",
+                f"{API}/client-crypto/v1/bootstrap?buildId={quote(str(config['buildId']))}"
+                f"&k={quote(str(lane))}",
                 {"Referer": f"{REFERER}/", "Origin": REFERER,
                  "x-build-id": config["buildId"],
                  "x-aa-boot": make_boot_token(config, epoch, lane)})

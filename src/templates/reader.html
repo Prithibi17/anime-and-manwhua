@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Kuhi Manga Reader</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0c10;
+            --surface-color: #12141c;
+            --border-color: #232838;
+            --text-color: #f1f5f9;
+            --text-muted: #94a3b8;
+            --accent-color: #6366f1;
+            --accent-hover: #4f46e5;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            overflow-x: hidden;
+        }
+
+        /* Top Bar */
+        .reader-nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 58px;
+            background: rgba(18, 20, 28, 0.92);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            z-index: 100;
+            transition: transform 0.25s ease;
+        }
+
+        .reader-nav.hidden {
+            transform: translateY(-100%);
+        }
+
+        .nav-left, .nav-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .nav-btn {
+            background: #1e2230;
+            color: #ffffff;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 7px 12px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.15s ease;
+            text-decoration: none;
+        }
+
+        .nav-btn:hover {
+            background: #2a3044;
+            border-color: #3b435e;
+            transform: translateY(-1px);
+        }
+
+        .nav-btn.primary {
+            background: var(--accent-color);
+            border-color: var(--accent-color);
+        }
+        .nav-btn.primary:hover {
+            background: var(--accent-hover);
+        }
+
+        .nav-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        .chapter-title-info {
+            display: flex;
+            flex-direction: column;
+            text-align: center;
+            max-width: 450px;
+            overflow: hidden;
+        }
+
+        .manga-name {
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .chapter-name {
+            font-size: 14px;
+            font-weight: 700;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Reader Content */
+        .reader-container {
+            width: 100%;
+            max-width: 900px;
+            margin: 68px auto 80px auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transition: max-width 0.2s ease;
+        }
+
+        .reader-container.full-width {
+            max-width: 100%;
+        }
+
+        .reader-container.medium-width {
+            max-width: 760px;
+        }
+
+        .page-wrap {
+            width: 100%;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #000000;
+            min-height: 200px;
+        }
+
+        .page-wrap img {
+            width: 100%;
+            height: auto;
+            display: block;
+            image-rendering: -webkit-optimize-contrast;
+            transition: opacity 0.25s ease;
+        }
+
+        .page-wrap img.loading {
+            opacity: 0.3;
+        }
+
+        .page-badge {
+            position: absolute;
+            bottom: 8px;
+            right: 8px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #ffffff;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 4px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+
+        .page-wrap:hover .page-badge {
+            opacity: 1;
+        }
+
+        .page-error {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+            gap: 12px;
+            background: #141722;
+            width: 100%;
+            border: 1px dashed #333a4d;
+        }
+
+        /* Loading Spinner */
+        .reader-loader {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 60vh;
+            gap: 16px;
+        }
+
+        .spinner {
+            width: 44px;
+            height: 44px;
+            border: 3.5px solid rgba(255, 255, 255, 0.15);
+            border-radius: 50%;
+            border-top-color: var(--accent-color);
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Bottom Floating Bar */
+        .reader-footer {
+            position: fixed;
+            bottom: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(18, 20, 28, 0.92);
+            backdrop-filter: blur(14px);
+            border: 1px solid var(--border-color);
+            border-radius: 30px;
+            padding: 8px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+            z-index: 100;
+            transition: all 0.25s ease;
+        }
+
+        .progress-text {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-muted);
+            min-width: 90px;
+            text-align: center;
+        }
+
+        .progress-text span {
+            color: #ffffff;
+            font-weight: 700;
+        }
+
+        /* Settings Modal / Menu */
+        .settings-menu {
+            display: none;
+            position: fixed;
+            top: 66px;
+            right: 16px;
+            background: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 14px;
+            box-shadow: 0 12px 36px rgba(0,0,0,0.7);
+            z-index: 110;
+            min-width: 200px;
+        }
+        .settings-menu.open {
+            display: block;
+        }
+        .settings-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 12px;
+        }
+        .settings-group:last-child {
+            margin-bottom: 0;
+        }
+        .settings-label {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .settings-options {
+            display: flex;
+            gap: 6px;
+        }
+        .opt-btn {
+            flex: 1;
+            padding: 6px 10px;
+            background: #1b1e2a;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: #fff;
+            font-size: 12px;
+            cursor: pointer;
+            text-align: center;
+        }
+        .opt-btn.active {
+            background: var(--accent-color);
+            border-color: var(--accent-color);
+        }
+
+        /* Next Chapter Button Card */
+        .chapter-nav-card {
+            width: 100%;
+            padding: 30px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            background: #12141c;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            margin-top: 30px;
+            text-align: center;
+        }
+
+        @media (max-width: 640px) {
+            .chapter-title-info {
+                display: none;
+            }
+            .reader-container {
+                margin-top: 60px;
+                margin-bottom: 70px;
+            }
+            .reader-nav {
+                padding: 0 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header Navigation -->
+    <header class="reader-nav" id="readerNav">
+        <div class="nav-left">
+            <button class="nav-btn" onclick="window.history.back()" title="Go Back">
+                &larr; Back
+            </button>
+            <button class="nav-btn" id="prevChapterBtn" onclick="navigateChapter('prev')" title="Previous Chapter">
+                &lsaquo; Prev
+            </button>
+        </div>
+
+        <div class="chapter-title-info">
+            <div class="manga-name" id="mangaTitle">Kuhi Manga Reader</div>
+            <div class="chapter-name" id="chapterTitle">Loading Chapter...</div>
+        </div>
+
+        <div class="nav-right">
+            <button class="nav-btn" id="nextChapterBtn" onclick="navigateChapter('next')" title="Next Chapter">
+                Next &rsaquo;
+            </button>
+            <button class="nav-btn" onclick="toggleSettings()" title="Settings">
+                &#9881;
+            </button>
+        </div>
+    </header>
+
+    <!-- Settings Menu -->
+    <div class="settings-menu" id="settingsMenu">
+        <div class="settings-group">
+            <div class="settings-label">Reader Width</div>
+            <div class="settings-options">
+                <button class="opt-btn" onclick="setWidth('medium-width', this)">Compact</button>
+                <button class="opt-btn active" onclick="setWidth('', this)">Standard</button>
+                <button class="opt-btn" onclick="setWidth('full-width', this)">Full</button>
+            </div>
+        </div>
+        <div class="settings-group">
+            <div class="settings-label">Screen</div>
+            <button class="opt-btn" onclick="toggleFullScreen()">Toggle Fullscreen (F)</button>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <main class="reader-container" id="readerContainer">
+        <div class="reader-loader" id="loader">
+            <div class="spinner"></div>
+            <div style="font-weight: 600; color: #94a3b8;" id="loaderMsg">Fetching chapter pages...</div>
+        </div>
+    </main>
+
+    <!-- Bottom Floating Bar -->
+    <footer class="reader-footer" id="readerFooter">
+        <button class="nav-btn" onclick="window.scrollTo({top: 0, behavior: 'smooth'})" title="Top">
+            &uarr; Top
+        </button>
+        <div class="progress-text" id="progressText">
+            Page <span id="curPageNum">1</span> / <span id="totalPageNum">1</span>
+        </div>
+        <button class="nav-btn primary" id="footerNextBtn" onclick="navigateChapter('next')">
+            Next Chapter &rsaquo;
+        </button>
+    </footer>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const pathParts = window.location.pathname.split('/');
+        const chapterId = pathParts[pathParts.length - 1] || urlParams.get('id') || '';
+        const source = urlParams.get('source') || 'vortex';
+        const apiKey = urlParams.get('key') || urlParams.get('api_key') || '';
+        const mangaSlug = urlParams.get('slug') || '';
+
+        let chapterData = null;
+        let totalPages = 0;
+        let nextChapterId = null;
+        let prevChapterId = null;
+
+        async function initReader() {
+            if (!chapterId) {
+                document.getElementById('loaderMsg').textContent = "No chapter ID specified.";
+                return;
+            }
+
+            try {
+                let apiUrl = `/api/manga/chapter/${encodeURIComponent(chapterId)}?source=${encodeURIComponent(source)}`;
+                if (apiKey) apiUrl += `&key=${encodeURIComponent(apiKey)}`;
+
+                const res = await fetch(apiUrl);
+                if (!res.ok) {
+                    throw new Error(`Failed to load chapter (HTTP ${res.status})`);
+                }
+
+                chapterData = await res.json();
+                renderChapter(chapterData);
+            } catch (err) {
+                document.getElementById('loaderMsg').textContent = `Error: ${err.message}`;
+            }
+        }
+
+        function renderChapter(data) {
+            const container = document.getElementById('readerContainer');
+            container.innerHTML = '';
+
+            const chTitle = data.title || `Chapter ${data.number || ''}`;
+            document.getElementById('chapterTitle').textContent = chTitle;
+            document.title = `${chTitle} - Kuhi Reader`;
+
+            nextChapterId = data.next_chapter;
+            prevChapterId = data.prev_chapter;
+
+            document.getElementById('nextChapterBtn').disabled = !nextChapterId;
+            document.getElementById('prevChapterBtn').disabled = !prevChapterId;
+            document.getElementById('footerNextBtn').disabled = !nextChapterId;
+
+            const pages = data.pages || [];
+            totalPages = pages.length;
+            document.getElementById('totalPageNum').textContent = totalPages;
+
+            if (totalPages === 0) {
+                container.innerHTML = `
+                    <div class="chapter-nav-card">
+                        <h2>No pages found for this chapter</h2>
+                        <p style="color:#94a3b8;">This chapter may still be processing or requires external reader.</p>
+                        <button class="nav-btn primary" onclick="window.history.back()">Go Back</button>
+                    </div>
+                `;
+                return;
+            }
+
+            // Render continuous page strips
+            pages.forEach((p, idx) => {
+                const wrap = document.createElement('div');
+                wrap.className = 'page-wrap';
+                wrap.id = `page-${idx + 1}`;
+
+                const img = document.createElement('img');
+                img.className = 'loading';
+                img.loading = idx < 3 ? 'eager' : 'lazy';
+                img.alt = `Page ${p.page || idx + 1}`;
+                img.src = p.url;
+
+                img.onload = () => {
+                    img.classList.remove('loading');
+                };
+
+                img.onerror = () => {
+                    wrap.innerHTML = `
+                        <div class="page-error">
+                            <div style="font-weight: 600; color: #ef4444;">Failed to load page ${idx + 1}</div>
+                            <button class="nav-btn" onclick="retryImage(this, '${p.url}')">Retry Image</button>
+                        </div>
+                    `;
+                };
+
+                const badge = document.createElement('div');
+                badge.className = 'page-badge';
+                badge.textContent = `${idx + 1} / ${totalPages}`;
+
+                wrap.appendChild(img);
+                wrap.appendChild(badge);
+                container.appendChild(wrap);
+            });
+
+            // End of chapter card
+            const endCard = document.createElement('div');
+            endCard.className = 'chapter-nav-card';
+            endCard.innerHTML = `
+                <h3>You finished ${chTitle}!</h3>
+                <p style="color:#94a3b8;">Continue reading the next chapter or choose another title.</p>
+                <div style="display:flex;gap:12px;">
+                    ${prevChapterId ? `<button class="nav-btn" onclick="navigateChapter('prev')">&lsaquo; Previous Chapter</button>` : ''}
+                    ${nextChapterId ? `<button class="nav-btn primary" onclick="navigateChapter('next')">Next Chapter &rsaquo;</button>` : `<span style="color:#94a3b8;font-size:13px;">You are at the latest chapter!</span>`}
+                </div>
+            `;
+            container.appendChild(endCard);
+
+            setupScrollObserver();
+        }
+
+        function retryImage(btn, url) {
+            const parent = btn.closest('.page-wrap');
+            if (!parent) return;
+            const newImg = document.createElement('img');
+            newImg.src = url + '&retry=' + Date.now();
+            newImg.onload = () => {
+                parent.innerHTML = '';
+                parent.appendChild(newImg);
+            };
+        }
+
+        function setupScrollObserver() {
+            window.addEventListener('scroll', () => {
+                const pageWraps = document.querySelectorAll('.page-wrap');
+                const viewportMiddle = window.scrollY + (window.innerHeight / 2);
+
+                for (let i = 0; i < pageWraps.length; i++) {
+                    const el = pageWraps[i];
+                    const top = el.offsetTop;
+                    const bot = top + el.offsetHeight;
+                    if (viewportMiddle >= top && viewportMiddle <= bot) {
+                        document.getElementById('curPageNum').textContent = i + 1;
+                        break;
+                    }
+                }
+            }, { passive: true });
+        }
+
+        function navigateChapter(dir) {
+            const targetId = dir === 'next' ? nextChapterId : prevChapterId;
+            if (!targetId) return;
+
+            let nextUrl = `/manga/reader/${encodeURIComponent(targetId)}?source=${encodeURIComponent(source)}`;
+            if (apiKey) nextUrl += `&key=${encodeURIComponent(apiKey)}`;
+            if (mangaSlug) nextUrl += `&slug=${encodeURIComponent(mangaSlug)}`;
+            window.location.href = nextUrl;
+        }
+
+        function toggleSettings() {
+            const menu = document.getElementById('settingsMenu');
+            menu.classList.toggle('open');
+        }
+
+        function setWidth(cls, btn) {
+            const c = document.getElementById('readerContainer');
+            c.className = `reader-container ${cls}`.trim();
+            btn.parentElement.querySelectorAll('.opt-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        }
+
+        function toggleFullScreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(() => {});
+            } else if (document.exitFullscreen) {
+                document.exitFullscreen().catch(() => {});
+            }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'f' || e.key === 'F') {
+                toggleFullScreen();
+            } else if (e.key === 'ArrowRight' && nextChapterId) {
+                navigateChapter('next');
+            } else if (e.key === 'ArrowLeft' && prevChapterId) {
+                navigateChapter('prev');
+            }
+        });
+
+        window.addEventListener('DOMContentLoaded', initReader);
+    </script>
+</body>
+</html>

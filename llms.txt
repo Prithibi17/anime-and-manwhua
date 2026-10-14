@@ -1,0 +1,223 @@
+# Kuhi Anime & Manga Studio API - LLM & AI Agent Specification
+
+> This document is designed for AI assistants, LLMs, and autonomous agents (ChatGPT, Claude, Cursor, Gemini, Copilot) to build applications using the Kuhi Anime & Manga Studio API.
+
+## API Overview & Base URL
+- **Base URL:** `http://localhost:5646` (replace with active host/port if deployed)
+- **CORS:** Enabled (`*`) on all endpoints.
+- **Authentication:** Required for `/api/anime/*` and `/api/manga/*`.
+  - Query Parameter: `?key=YOUR_API_KEY`
+  - HTTP Header: `X-API-Key: YOUR_API_KEY`
+  - Bearer Token: `Authorization: Bearer YOUR_API_KEY`
+  - Default Demo Key: `kuhi_live_27f453e42c851403fac890ac7d1cc803`
+
+---
+
+## 1. Anime Video & Built-in Player Endpoints
+
+### 1.1 Get Built-in Player & Embed Code
+- **Method:** `GET`
+- **Path:** `/api/anime/player`
+- **Query Parameters:**
+  - `id` (int, required): AniList Anime ID (e.g., `21` for One Piece, `21827` for Violet Evergarden, `16498` for Attack on Titan)
+  - `episode` (int, optional, default `1`): Episode number
+  - `type` (string, optional, default `sub`): `sub` or `dub`
+  - `server` (string, optional): Preferred server e.g., `DatSaV` (MP4) or `Vidplay` (HLS)
+  - `key` (string, required): API Key
+- **Response Shape:**
+  ```json
+  {
+    "status": "success",
+    "anime_id": 21,
+    "episode": 1,
+    "audio": "sub",
+    "player_url": "http://localhost:5646/player?id=21&episode=1&type=sub&key=YOUR_KEY",
+    "iframe_embed": "<iframe src=\"http://localhost:5646/player?id=21&episode=1&type=sub&key=YOUR_KEY\" width=\"100%\" height=\"100%\" frameborder=\"0\" allow=\"autoplay; fullscreen; picture-in-picture\" allowfullscreen></iframe>",
+    "features": {
+      "skip_buttons": "Rewind 10s & Forward 10s between play and volume",
+      "volume_slider": "Horizontal hover-expand slider with drop shadow",
+      "aniskip_button": "Floating button at bottom: 85px (above timeline)",
+      "timeline_markers": "Yellow highlighted intro and outro intervals"
+    },
+    "skip_times": {
+      "found": true,
+      "intro": { "start": 92.5, "end": 182.0 },
+      "outro": { "start": 1340.0, "end": 1420.0 }
+    }
+  }
+  ```
+
+### 1.2 Direct Stream Extraction (CORS Proxied)
+- **Method:** `GET`
+- **Path:** `/api/anime/stream`
+- **Query Parameters:** `id`, `episode`, `type`, `key`
+- **Description:** Returns stream objects containing `stream_url` (pre-proxied through `/proxy_mp4` or `/proxy_m3u8` to prevent 403 Forbidden / CORS blocks), raw video URLs, and WebVTT subtitles.
+
+### 1.3 Full Episodes List
+- **Method:** `GET`
+- **Path:** `/api/anime/episodes/{anime_id}`
+- **Query Parameters:** `key`
+- **Description:** Returns total episode count, banner, HD poster, and an array of episodes with numbers, titles, and pre-built `player_url` and `iframe_embed` links.
+
+### 1.4 Standalone Web Player Page
+- **Method:** `GET`
+- **Path:** `/player?id={anime_id}&episode={episode}&key={key}`
+- **Description:** Standalone web player powered by Artplayer with:
+  - Horizontal hover-expand volume bar (soft shadow, no square box).
+  - 10s Rewind and 10s Forward buttons between Play and Volume.
+  - Floating AniSkip button at `bottom: 85px`.
+  - Yellow highlighted intervals on timeline seekbar.
+  - Multi-server & subtitle selection.
+
+---
+
+## 2. Manga, Manhwa & Manhua Endpoints
+
+### 2.1 Search Titles (Enriched with Official AniList HD Covers)
+- **Method:** `GET`
+- **Path:** `/api/manga/search`
+- **Query Parameters:**
+  - `q` (string, optional): Title keyword (e.g. `Solo Leveling`, `Omniscient Reader`)
+  - `type` (string, optional, default `all`): `all`, `manhwa`, `manga`, or `manhua`
+  - `source` (string, optional, default `all`): `all`, `vortex`, `toraka`, `mangadex`, or `anilist`
+  - `page` (int, optional, default `1`)
+  - `key` (string, required): API Key
+- **Response Shape:**
+  ```json
+  {
+    "page": 1,
+    "total": 34,
+    "results": [
+      {
+        "title": "Solo Leveling: Ragnarok",
+        "slug": "solo-leveling-ragnarok",
+        "source": "vortex",
+        "type": "MANHWA",
+        "poster": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx178663-rR9k8jNq.jpg",
+        "description": "...",
+        "rating": 8.4,
+        "genres": ["Action", "Fantasy"],
+        "info_url": "http://localhost:5646/api/manga/info/solo-leveling-ragnarok?source=vortex&key=YOUR_KEY"
+      }
+    ]
+  }
+  ```
+
+### 2.2 Popular Titles
+- **Method:** `GET`
+- **Path:** `/api/manga/popular`
+- **Query Parameters:** `type`, `source`, `key`
+
+### 2.3 Manga Details & Chapter List
+- **Method:** `GET`
+- **Path:** `/api/manga/info/{slug_or_id}`
+- **Query Parameters:** `source` (default `vortex`), `key`
+- **Response Shape:**
+  Returns metadata, synopsis, status, genres, HD poster, and `chapters` list:
+  ```json
+  {
+    "title": "The Emperor's Sword",
+    "slug": "the-emperors-sword",
+    "poster": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx175116-v0V2K.jpg",
+    "total_chapters": 90,
+    "chapters": [
+      {
+        "id": "33926",
+        "number": "1",
+        "title": "Chapter 1",
+        "is_locked": false,
+        "reader_url": "http://localhost:5646/manga/reader/33926?source=vortex&key=YOUR_KEY",
+        "chapter_api": "http://localhost:5646/api/manga/chapter/33926?source=vortex&key=YOUR_KEY"
+      }
+    ]
+  }
+  ```
+
+### 2.4 Chapter Page Images (CORS & Anti-Hotlinking Proxied)
+- **Method:** `GET`
+- **Path:** `/api/manga/chapter/{chapter_id}`
+- **Query Parameters:** `source` (default `vortex`), `key`
+- **Response Shape:**
+  ```json
+  {
+    "chapter_id": "33926",
+    "number": 1,
+    "title": "Chapter 1",
+    "source": "vortex",
+    "pages_count": 198,
+    "next_chapter": "33927",
+    "prev_chapter": null,
+    "reader_url": "http://localhost:5646/manga/reader/33926?source=vortex&key=YOUR_KEY",
+    "iframe_embed": "<iframe src=\"http://localhost:5646/manga/reader/33926?source=vortex&key=YOUR_KEY\" width=\"100%\" height=\"800\" frameborder=\"0\" allowfullscreen></iframe>",
+    "pages": [
+      {
+        "page": 1,
+        "url": "http://localhost:5646/proxy_image?url=https%3A%2F%2Fstorage.vortexscans.org%2F...&referer=https%3A%2F%2Fvortexscans.org%2F",
+        "raw_url": "https://storage.vortexscans.org/..."
+      }
+    ]
+  }
+  ```
+
+### 2.5 Standalone Webtoon Reader
+- **Method:** `GET`
+- **Path:** `/manga/reader/{chapter_id}?source={source}&key={key}`
+- **Description:** Full responsive vertical continuous strip reader with dark mode, zoom toggles, and next/prev chapter navigation.
+
+---
+
+## 3. Proxy Endpoints (Zero-Config CORS Bypassing)
+- `/proxy_image?url={URL}&referer={REFERER}`: Serves images with permissive CORS headers.
+- `/proxy_mp4?url={URL}&referer={REFERER}`: Byte-range streaming for MP4 files.
+- `/proxy_m3u8?url={URL}&referer={REFERER}`: Rewrites HLS playlists to route segments through proxy.
+- `/proxy_sub?url={URL}`: Serves WebVTT/SRT subtitles with `Access-Control-Allow-Origin: *`.
+
+---
+
+## 4. Example AI Code Prompts & Snippets
+
+### Quick iFrame Embed for HTML / React:
+```html
+<!-- Anime Video Player -->
+<iframe
+  src="http://localhost:5646/player?id=21&episode=1&type=sub&key=kuhi_live_27f453e42c851403fac890ac7d1cc803"
+  width="100%"
+  height="600"
+  frameborder="0"
+  allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+  allowfullscreen>
+</iframe>
+
+<!-- Manga Chapter Reader -->
+<iframe
+  src="http://localhost:5646/manga/reader/33926?source=vortex&key=kuhi_live_27f453e42c851403fac890ac7d1cc803"
+  width="100%"
+  height="850"
+  frameborder="0"
+  allowfullscreen>
+</iframe>
+```
+
+### Complete JavaScript Fetch Integration:
+```javascript
+const API_BASE = "http://localhost:5646";
+const API_KEY = "kuhi_live_27f453e42c851403fac890ac7d1cc803";
+
+// 1. Get Anime Built-in Player
+async function getPlayerEmbed(animeId, episode = 1) {
+  const res = await fetch(`${API_BASE}/api/anime/player?id=${animeId}&episode=${episode}&key=${API_KEY}`);
+  return await res.json(); // contains .iframe_embed and .player_url
+}
+
+// 2. Search Manga & get HD Covers
+async function searchManga(query) {
+  const res = await fetch(`${API_BASE}/api/manga/search?q=${encodeURIComponent(query)}&type=manhwa&key=${API_KEY}`);
+  return await res.json(); // contains .results with .poster and .info_url
+}
+
+// 3. Get Chapter Pages
+async function getChapterImages(chapterId) {
+  const res = await fetch(`${API_BASE}/api/manga/chapter/${chapterId}?source=vortex&key=${API_KEY}`);
+  return await res.json(); // contains .pages with proxied image .url
+}
+```
