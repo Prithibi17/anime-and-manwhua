@@ -43,35 +43,13 @@ app.include_router(api_router)
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 KEYS_FILE = os.path.join(DATA_DIR, "api_keys.json")
 
-def _ensure_data_dir():
-    if not os.path.exists(DATA_DIR):
-        os.makedirs(DATA_DIR, exist_ok=True)
-    if not os.path.exists(KEYS_FILE):
-        default_keys = [
-            {
-                "id": "key_default_demo",
-                "name": "Default Integration Key",
-                "key": f"kuhi_live_{secrets.token_hex(16)}",
-                "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "calls": 0,
-                "status": "active"
-            }
-        ]
-        with open(KEYS_FILE, "w", encoding="utf-8") as f:
-            json.dump(default_keys, f, indent=2)
+from src.api_auth import get_keys as _auth_get_keys, save_keys as _auth_save_keys
 
 def _get_keys() -> list:
-    _ensure_data_dir()
-    try:
-        with open(KEYS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return []
+    return _auth_get_keys()
 
 def _save_keys(keys: list):
-    _ensure_data_dir()
-    with open(KEYS_FILE, "w", encoding="utf-8") as f:
-        json.dump(keys, f, indent=2)
+    _auth_save_keys(keys)
 
 
 @app.get("/api/keys")
