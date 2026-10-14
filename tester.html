@@ -1765,6 +1765,51 @@
                         Returns all page images for reading. Images are pre-routed through <code style="color:#38bdf8;">/proxy_image</code> so they render in any browser or app without CORS or anti-hotlink blocks. Also provides a standalone <code style="color:#38bdf8;">reader_url</code> and <code style="color:#38bdf8;">iframe_embed</code>.
                     </p>
                 </div>
+
+                <!-- Release Tracker: Anime -->
+                <div class="keys-card" style="border-left: 3px solid #6366f1;">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <span style="background:#6366f1; color:#fff; font-size:0.75rem; font-weight:800; padding:3px 8px; border-radius:4px;">GET</span>
+                            <span style="font-family:monospace; font-weight:800; color:#fff; font-size:0.95rem;">/api/anime/releases/{anime_id}</span>
+                            <span style="background:rgba(99,102,241,0.15); color:#a5b4fc; font-size:0.7rem; font-weight:700; padding:2px 8px; border-radius:10px;">NEW</span>
+                        </div>
+                        <button class="btn-sm-action" onclick="testDocsEndpoint('/api/anime/releases/21')">▶ Try Endpoint</button>
+                    </div>
+                    <p style="font-size:0.82rem; color:var(--text-muted); margin-top:8px;">
+                        Tracks exact count of released episodes, airing status (<code style="color:#38bdf8;">is_airing</code>), next episode countdown, official AniList HD posters & banners, and full episode list with pre-built direct player links and iframe embeds.
+                    </p>
+                </div>
+
+                <!-- Release Tracker: Manga -->
+                <div class="keys-card" style="border-left: 3px solid #10b981;">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <span style="background:#10b981; color:#fff; font-size:0.75rem; font-weight:800; padding:3px 8px; border-radius:4px;">GET</span>
+                            <span style="font-family:monospace; font-weight:800; color:#fff; font-size:0.95rem;">/api/manga/releases/{slug}?include_pages=true</span>
+                            <span style="background:rgba(16,185,129,0.15); color:#6ee7b7; font-size:0.7rem; font-weight:700; padding:2px 8px; border-radius:10px;">NEW</span>
+                        </div>
+                        <button class="btn-sm-action" onclick="testDocsEndpoint('/api/manga/releases/the-rebel-of-the-apocalypse-academy?include_pages=true')">▶ Try Endpoint</button>
+                    </div>
+                    <p style="font-size:0.82rem; color:var(--text-muted); margin-top:8px;">
+                        Tracks total released chapters count, latest released chapter, highest unlocked chapter, official AniList HD covers, and returns <strong>full panel images</strong> pre-wrapped in CORS-safe <code style="color:#38bdf8;">/proxy_image</code> links for instant reader rendering.
+                    </p>
+                </div>
+
+                <!-- Unified Release Tracker -->
+                <div class="keys-card" style="border-left: 3px solid #ec4899;">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <span style="background:#ec4899; color:#fff; font-size:0.75rem; font-weight:800; padding:3px 8px; border-radius:4px;">GET</span>
+                            <span style="font-family:monospace; font-weight:800; color:#fff; font-size:0.95rem;">/api/releases?type=anime|manga&id=...</span>
+                            <span style="background:rgba(236,72,153,0.15); color:#f472b6; font-size:0.7rem; font-weight:700; padding:2px 8px; border-radius:10px;">UNIFIED HUB</span>
+                        </div>
+                        <button class="btn-sm-action" onclick="testDocsEndpoint('/api/releases?type=anime&id=21')">▶ Try Endpoint</button>
+                    </div>
+                    <p style="font-size:0.82rem; color:var(--text-muted); margin-top:8px;">
+                        Unified router for AI agents and apps to query release tracking, counts, posters, panels, and player embeds for either anime or manga via a single clean endpoint.
+                    </p>
+                </div>
             </div>
 
             <!-- Live Interactive Tester Sandbox -->
@@ -1780,10 +1825,12 @@
                 <div class="presets-row" style="margin-top:4px;">
                     <span style="font-size:0.75rem; color:var(--text-dim); font-weight:700;">PRESETS:</span>
                     <button class="preset-pill" onclick="testDocsEndpoint('/api/anime/player?id=21&episode=1')">🎬 Player Embed</button>
-                    <button class="preset-pill" onclick="testDocsEndpoint('/api/anime/stream?id=21827&episode=1')">⚡ Streams & Subtitles</button>
+                    <button class="preset-pill" onclick="testDocsEndpoint('/api/anime/releases/21')">📡 Anime Releases</button>
+                    <button class="preset-pill" onclick="testDocsEndpoint('/api/manga/releases/the-rebel-of-the-apocalypse-academy?include_pages=true')">📡 Manga Releases (Panels)</button>
+                    <button class="preset-pill" onclick="testDocsEndpoint('/api/releases?type=anime&id=21')">🌐 Unified Releases</button>
+                    <button class="preset-pill" onclick="testDocsEndpoint('/api/anime/stream?id=21827&episode=1')">⚡ Streams</button>
                     <button class="preset-pill" onclick="testDocsEndpoint('/api/manga/search?q=Solo+Leveling')">🔍 Manga Search</button>
-                    <button class="preset-pill" onclick="testDocsEndpoint('/api/manga/info/the-emperors-sword?source=vortex')">📖 Manga Chapters</button>
-                    <button class="preset-pill" onclick="testDocsEndpoint('/api/manga/chapter/33926?source=vortex')">🖼️ Chapter Pages</button>
+                    <button class="preset-pill" onclick="testDocsEndpoint('/api/manga/info/the-emperors-sword?source=vortex')">📖 Chapters</button>
                 </div>
                 <div class="json-debug-output" id="docsSandboxOutput" style="min-height:160px;">// Live JSON response will appear here after clicking Send Request</div>
             </div>

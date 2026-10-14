@@ -1,28 +1,32 @@
 # Kuhi Anime & Manga Studio API Documentation
-**Version:** 3.5  
-**Base URL:** `http://localhost:5646` (or your deployed server domain)
+**Version:** 3.6  
+**Base URL:** `http://localhost:5646` (or `https://anime-and-manwhua.vercel.app`)
 
-Welcome to the **Kuhi Anime & Manga Studio API**. This API allows you to retrieve anime video streams with the website's built-in player (including horizontal hover volume slider, 10s skip buttons, AniSkip button at `bottom: 85px`, and yellow timeline markers), as well as complete manga, manhwa, and manhua information (official AniList high-resolution posters, synopses, chapters list, and chapter page images with a continuous web reader).
+Welcome to the **Kuhi Anime & Manga Studio API**. This API provides unified media data, exact release tracking (how many chapters or episodes have been released so far), countdown to next airing episodes, direct built-in anime video streaming player embeds, complete chapter lists, official AniList HD posters & banners, and full panel images for manga chapters with CORS-safe proxy delivery.
 
 ---
 
 ## Table of Contents
 1. [Authentication & API Keys](#1-authentication--api-keys)
 2. [API Key Management](#2-api-key-management)
-3. [Anime Video & Built-in Player API](#3-anime-video--built-in-player-api)
+3. [Release Tracking & Content API (New)](#3-release-tracking--content-api)
+   - [Unified Release Tracker (Anime & Manga)](#unified-release-tracker)
+   - [Anime Release Status & Episode Count](#anime-release-status--episode-count)
+   - [Manga Release Status, Chapter Count & Panel Images](#manga-release-status-chapter-count--panel-images)
+4. [Anime Video & Built-in Player API](#4-anime-video--built-in-player-api)
    - [Get Built-in Player & Embed Code](#get-built-in-player--embed-code)
    - [Direct Video Stream URLs](#direct-video-stream-urls)
    - [Get Anime Episodes](#get-anime-episodes)
    - [Search Anime](#search-anime)
    - [Popular Anime](#popular-anime)
    - [Standalone Video Player URL](#standalone-video-player-url)
-4. [Manga, Manhwa & Manhua API](#4-manga-manhwa--manhua-api)
+5. [Manga, Manhwa & Manhua API](#5-manga-manhwa--manhua-api)
    - [Search Manga / Manhwa / Manhua](#search-manga--manhwa--manhua)
    - [Popular / Trending Manga](#popular--trending-manga)
    - [Manga Details & Chapters](#manga-details--chapters)
    - [Chapter Pages & Reader Links](#chapter-pages--reader-links)
    - [Standalone Manga Reader URL](#standalone-manga-reader-url)
-5. [Code Examples](#5-code-examples)
+6. [Code Examples](#6-code-examples)
    - [cURL](#curl)
    - [JavaScript / Fetch](#javascript--fetch)
    - [Python (requests / httpx)](#python-requests--httpx)
@@ -32,12 +36,12 @@ Welcome to the **Kuhi Anime & Manga Studio API**. This API allows you to retriev
 
 ## 1. Authentication & API Keys
 
-All `/api/anime/*` and `/api/manga/*` endpoints require a valid API key. You can authenticate using any of the three methods:
+All `/api/anime/*`, `/api/manga/*`, and `/api/releases` endpoints require a valid API key. You can authenticate using any of the three methods:
 
 ### Method A: Query Parameter (Simplest)
 Append `?key=YOUR_API_KEY` (or `?api_key=YOUR_API_KEY`) to any URL:
 ```bash
-http://localhost:5646/api/anime/player?id=21&episode=1&key=YOUR_API_KEY
+https://anime-and-manwhua.vercel.app/api/releases?type=anime&id=21&key=YOUR_API_KEY
 ```
 
 ### Method B: HTTP Header `X-API-Key`
@@ -52,7 +56,7 @@ Authorization: Bearer YOUR_API_KEY
 ```
 
 > **Default Demo Key:**  
-> A pre-seeded development key is available in your workspace:  
+> A pre-seeded development key is available for immediate testing:  
 > `kuhi_live_27f453e42c851403fac890ac7d1cc803`
 
 ---
@@ -72,8 +76,8 @@ GET /api/keys
       "name": "Default Integration Key",
       "key": "kuhi_live_27f453e42c851403fac890ac7d1cc803",
       "created_at": "2026-10-14 13:09:58",
-      "calls": 12,
-      "last_used": "2026-10-14 22:45:19",
+      "calls": 142,
+      "last_used": "2026-10-15 00:55:19",
       "status": "active"
     }
   ]
@@ -97,7 +101,184 @@ DELETE /api/keys/{key_id_or_key}
 
 ---
 
-## 3. Anime Video & Built-in Player API
+## 3. Release Tracking & Content API
+
+Use these endpoints when you need to know **how many episodes or chapters have been released**, when the next episode airs, official HD posters and banners, and **proper panel images** for reading manga chapters.
+
+### Unified Release Tracker
+Query release information for either Anime or Manga using one single endpoint.
+
+```http
+GET /api/releases?type={anime|manga}&id={id_or_slug}&key={YOUR_KEY}
+```
+
+**Query Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `type` | string | Yes | `anime` or `manga` (also accepts `manhwa`, `manhua`) |
+| `id` | string | Yes | AniList Anime ID (e.g. `21`) or Manga slug/ID (e.g. `the-rebel-of-the-apocalypse-academy`) |
+| `source` | string | No | For manga: `vortex` (default), `mangadex`, or `auto` |
+| `include_pages` | boolean | No | For manga: whether to include full chapter panel images (default `false`) |
+| `chapter` | string | No | For manga: target chapter (`latest`, `first`, `unlocked`, or number like `1`) |
+| `sub_or_dub` | string | No | For anime: `sub` (default) or `dub` |
+| `limit` | int | No | For manga: max chapters to return (default `250`, max `500`) |
+
+---
+
+### Anime Release Status & Episode Count
+Returns the exact count of episodes released/aired so far, total planned episodes, next episode airing countdown, official AniList HD posters, and complete episode list with direct player URLs and iframe embed codes.
+
+```http
+GET /api/anime/releases/{anime_id}?type={sub|dub}&key={YOUR_KEY}
+```
+
+**Response Example (One Piece, ID 21):**
+```json
+{
+  "id": 21,
+  "mal_id": 21,
+  "title": "ONE PIECE",
+  "title_english": "One Piece",
+  "title_romaji": "ONE PIECE",
+  "title_native": "ONE PIECE",
+  "format": "TV",
+  "status": "RELEASING",
+  "is_airing": true,
+  "released_episodes_count": 1180,
+  "total_expected_episodes": null,
+  "latest_released_episode": {
+    "number": 1180,
+    "title": "Episode 1180",
+    "thumbnail": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx21-ELSYx3yMPcKM.jpg",
+    "player_url": "http://localhost:5646/player?id=21&episode=1180&key=YOUR_KEY",
+    "iframe_embed": "<iframe src=\"http://localhost:5646/player?id=21&episode=1180&key=YOUR_KEY\" width=\"100%\" height=\"100%\" frameborder=\"0\" allowfullscreen allow=\"autoplay; fullscreen; picture-in-picture\"></iframe>",
+    "stream_api": "http://localhost:5646/api/anime/stream?id=21&episode=1180&type=sub&key=YOUR_KEY"
+  },
+  "first_released_episode": {
+    "number": 1,
+    "title": "Episode 1",
+    "thumbnail": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx21-ELSYx3yMPcKM.jpg",
+    "player_url": "http://localhost:5646/player?id=21&episode=1&key=YOUR_KEY",
+    "iframe_embed": "<iframe src=\"http://localhost:5646/player?id=21&episode=1&key=YOUR_KEY\" width=\"100%\" height=\"100%\" frameborder=\"0\" allowfullscreen allow=\"autoplay; fullscreen; picture-in-picture\"></iframe>",
+    "stream_api": "http://localhost:5646/api/anime/stream?id=21&episode=1&type=sub&key=YOUR_KEY"
+  },
+  "next_airing": {
+    "episode": 1181,
+    "airing_at_timestamp": 1798985760,
+    "time_until_airing_seconds": 6979800,
+    "countdown": "80d 18h 50m"
+  },
+  "poster": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx21-ELSYx3yMPcKM.jpg",
+  "banner": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/21-wf37VakJmZqd.jpg",
+  "score": 88,
+  "genres": ["Action", "Adventure", "Comedy", "Drama", "Fantasy"],
+  "synopsis": "Gold Roger was known as the 'Pirate King'...",
+  "episodes": [
+    {
+      "number": 1,
+      "title": "Episode 1",
+      "thumbnail": "https://...",
+      "player_url": "http://localhost:5646/player?id=21&episode=1&key=YOUR_KEY",
+      "iframe_embed": "<iframe src=\"...\" ...></iframe>",
+      "stream_api": "http://localhost:5646/api/anime/stream?id=21&episode=1&type=sub&key=YOUR_KEY"
+    }
+  ]
+}
+```
+
+---
+
+### Manga Release Status, Chapter Count & Panel Images
+Returns exact chapter release count, latest released chapter, highest unlocked/free chapter, official AniList HD cover, and full panel images for immediate reader rendering.
+
+```http
+GET /api/manga/releases/{slug_or_id}?include_pages=true&key={YOUR_KEY}
+```
+
+**Query Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `slug_or_id` | string (path) | Yes | Series slug (e.g. `the-rebel-of-the-apocalypse-academy`) or MangaDex UUID |
+| `source` | string | No | `vortex` (default), `mangadex`, or `auto` |
+| `include_pages` | boolean | No | Set to `true` to return full panel images for target chapter (default `false`) |
+| `chapter` | string | No | Chapter target: `latest` (default), `unlocked`, `first`, or chapter number e.g. `15` |
+| `limit` | int | No | Max chapters in list (default `250`, max `500`) |
+
+**Response Example:**
+```json
+{
+  "id": "695",
+  "title": "The Rebel of the Apocalypse Academy",
+  "slug": "the-rebel-of-the-apocalypse-academy",
+  "type": "MANHWA",
+  "source": "vortex",
+  "status": "RELEASING",
+  "released_chapters_count": 16,
+  "poster": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/medium/b167759-Uqb92EWWE3pp.jpg",
+  "banner": null,
+  "synopsis": "In a world overwhelmed by an apocalyptic disaster...",
+  "genres": ["Action", "Fantasy", "School"],
+  "score": 82,
+  "latest_released_chapter": {
+    "id": "34023",
+    "number": "20",
+    "title": "Chapter 20",
+    "is_locked": true,
+    "release_date": "2026-10-14T20:10:00.000Z",
+    "reader_url": "http://localhost:5646/manga/reader/34023?source=vortex&key=YOUR_KEY",
+    "chapter_api": "http://localhost:5646/api/manga/chapter/34023?source=vortex&key=YOUR_KEY"
+  },
+  "latest_unlocked_chapter": {
+    "id": "34018",
+    "number": "15",
+    "title": "Chapter 15",
+    "is_locked": false,
+    "release_date": "2026-10-14T19:00:00.000Z",
+    "reader_url": "http://localhost:5646/manga/reader/34018?source=vortex&key=YOUR_KEY",
+    "chapter_api": "http://localhost:5646/api/manga/chapter/34018?source=vortex&key=YOUR_KEY"
+  },
+  "first_released_chapter": {
+    "id": "34010",
+    "number": "1",
+    "title": "Chapter 1",
+    "is_locked": false,
+    "release_date": "2026-10-14T18:46:17.100Z",
+    "reader_url": "http://localhost:5646/manga/reader/34010?source=vortex&key=YOUR_KEY",
+    "chapter_api": "http://localhost:5646/api/manga/chapter/34010?source=vortex&key=YOUR_KEY"
+  },
+  "chapter_panels": {
+    "chapter_id": "34018",
+    "number": "15",
+    "title": "Chapter 15",
+    "is_locked": false,
+    "pages_count": 32,
+    "reader_url": "http://localhost:5646/manga/reader/34018?source=vortex&key=YOUR_KEY",
+    "iframe_embed": "<iframe src=\"http://localhost:5646/manga/reader/34018?source=vortex&key=YOUR_KEY\" width=\"100%\" height=\"800\" frameborder=\"0\" allowfullscreen></iframe>",
+    "pages": [
+      {
+        "page": 1,
+        "url": "http://localhost:5646/proxy_image?url=https%3A%2F%2Fstorage.vortexscans.org%2Fupload%2F...webp&referer=https%3A%2F%2Fvortexscans.org%2F",
+        "raw_url": "https://storage.vortexscans.org/upload/...webp"
+      }
+    ]
+  },
+  "chapters": [
+    {
+      "id": "34023",
+      "number": "20",
+      "title": "Chapter 20",
+      "is_locked": true,
+      "release_date": "2026-10-14T20:10:00.000Z",
+      "reader_url": "http://localhost:5646/manga/reader/34023?source=vortex&key=YOUR_KEY",
+      "chapter_api": "http://localhost:5646/api/manga/chapter/34023?source=vortex&key=YOUR_KEY"
+    }
+  ]
+}
+```
+
+---
+
+## 4. Anime Video & Built-in Player API
 
 ### Get Built-in Player & Embed Code
 Returns the complete standalone player URL and ready-to-use `<iframe>` embed code.
@@ -195,128 +376,59 @@ Returns the full episode list for an anime, including direct built-in player URL
 GET /api/anime/episodes/{anime_id}?key={YOUR_KEY}
 ```
 
-**Response Example:**
-```json
-{
-  "id": 21,
-  "title": "One Piece",
-  "format": "TV",
-  "status": "RELEASING",
-  "total_episodes": 1122,
-  "poster": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx21-YCDoj1EkASI2.jpg",
-  "banner": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/21-wf37VakJmZqs.jpg",
-  "episodes": [
-    {
-      "number": 1,
-      "title": "I'm Luffy! The Man Who Will Become the Pirate King!",
-      "thumbnail": "https://...",
-      "player_url": "http://localhost:5646/player?id=21&episode=1&key=YOUR_KEY",
-      "iframe_embed": "<iframe src=\"http://localhost:5646/player?id=21&episode=1&key=YOUR_KEY\" width=\"100%\" height=\"100%\" frameborder=\"0\" allowfullscreen></iframe>"
-    }
-  ]
-}
+---
+
+### Search Anime
+Search for titles across the AniList catalog.
+
+```http
+GET /api/anime/search?q={keyword}&page=1&per_page=20&key={YOUR_KEY}
+```
+
+---
+
+### Popular Anime
+Retrieve currently trending and top-rated anime titles.
+
+```http
+GET /api/anime/popular?page=1&per_page=20&key={YOUR_KEY}
 ```
 
 ---
 
 ### Standalone Video Player URL
-You can directly link or embed the player page in your web or mobile app:
+If you want to view the built-in video player directly in your browser or an iframe:
 ```http
-http://localhost:5646/player?id={anime_id}&episode={episode}&type={sub|dub}&key={YOUR_KEY}
+http://localhost:5646/player?id={anime_id}&episode={episode}&key={YOUR_KEY}
 ```
-
-#### Controls & Features Included:
-- **Volume Slider:** Horizontal hover-expand slider with soft shadow (no dark square).
-- **Skip Buttons:** 10s Rewind and 10s Forward buttons placed conveniently between the Play button and Volume button.
-- **Floating Skip Intro / Outro:** AniSkip button appears at `bottom: 85px` (safely elevated above the timeline and controls).
-- **Yellow Timeline Highlights:** Shows exact intro and outro segments on the seekbar.
-- **Subtitles & Quality:** Built-in multi-subtitle support and quality/server switcher.
-- **Direct Playback:** You can also pass an arbitrary video URL directly:  
-  `http://localhost:5646/player?url={stream_url}&key={YOUR_KEY}`
 
 ---
 
-## 4. Manga, Manhwa & Manhua API
+## 5. Manga, Manhwa & Manhua API
 
 ### Search Manga / Manhwa / Manhua
-Search across Vortex Scans, Toraka, MangaDex, and AniList with verified, high-resolution official posters.
+Search across Vortex Scans, Toraka, MangaDex, and AniList with deduplication and official AniList poster enrichment.
 
 ```http
-GET /api/manga/search?q={query}&type={all|manhwa|manga|manhua}&source={all|vortex|toraka|mangadex}&page={page}&key={YOUR_KEY}
-```
-
-**Query Parameters:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `q` | string | `None` | Search keyword (e.g. `Solo Leveling`, `Omniscient Reader`) |
-| `type` | string | `all` | Filter by `all`, `manhwa`, `manga`, or `manhua` |
-| `source` | string | `all` | Source filter: `all`, `vortex`, `toraka`, `mangadex`, `anilist` |
-| `page` | int | `1` | Page number |
-| `key` | string | **Required** | Your API key |
-
-**Response Example:**
-```json
-{
-  "page": 1,
-  "type": "all",
-  "source": "all",
-  "total": 34,
-  "results": [
-    {
-      "title": "Solo Leveling: Ragnarok",
-      "slug": "solo-leveling-ragnarok",
-      "source": "vortex",
-      "type": "MANHWA",
-      "poster": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx178663-rR9k8jNq.jpg",
-      "description": "The earth's existence is threatened once again...",
-      "rating": 8.4,
-      "genres": ["Action", "Fantasy"],
-      "info_url": "http://localhost:5646/api/manga/info/solo-leveling-ragnarok?source=vortex&key=YOUR_KEY"
-    }
-  ]
-}
+GET /api/manga/search?q={query}&type={all|manhwa|manga|manhua}&source={all|vortex|mangadex}&page=1&key={YOUR_KEY}
 ```
 
 ---
 
 ### Popular / Trending Manga
+Retrieve popular and trending manga and webtoon titles.
+
 ```http
-GET /api/manga/popular?type={all|manhwa|manga|manhua}&source={all|vortex|toraka|anilist}&key={YOUR_KEY}
+GET /api/manga/popular?type=all&page=1&per_page=20&key={YOUR_KEY}
 ```
 
 ---
 
 ### Manga Details & Chapters
-Retrieves full synopsis, genres, official HD poster, and the complete chapter list with direct web reader links.
+Fetch metadata, synopsis, status, and chapter list for a title.
 
 ```http
-GET /api/manga/info/{slug_or_id}?source={vortex|mangadex|toraka}&key={YOUR_KEY}
-```
-
-**Response Example:**
-```json
-{
-  "title": "The Emperor's Sword",
-  "slug": "the-emperors-sword",
-  "source": "vortex",
-  "poster": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx175116-v0V2K.jpg",
-  "description": "After losing his master and martial art school...",
-  "status": "RELEASING",
-  "type": "manhwa",
-  "genres": ["Action", "Martial Arts", "Reincarnation"],
-  "total_chapters": 90,
-  "chapters": [
-    {
-      "id": "33926",
-      "number": "1",
-      "title": "Chapter 1",
-      "is_locked": false,
-      "release_date": "2024-08-20T14:00:00Z",
-      "reader_url": "http://localhost:5646/manga/reader/33926?source=vortex&key=YOUR_KEY",
-      "chapter_api": "http://localhost:5646/api/manga/chapter/33926?source=vortex&key=YOUR_KEY"
-    }
-  ]
-}
+GET /api/manga/info/{slug_or_id}?source={vortex|mangadex}&key={YOUR_KEY}
 ```
 
 ---
@@ -326,28 +438,6 @@ Retrieves all page image URLs for reading a chapter. Every image URL is pre-wrap
 
 ```http
 GET /api/manga/chapter/{chapter_id}?source={vortex|mangadex}&key={YOUR_KEY}
-```
-
-**Response Example:**
-```json
-{
-  "chapter_id": "33926",
-  "number": 1,
-  "title": "Chapter 1",
-  "source": "vortex",
-  "pages_count": 198,
-  "next_chapter": "33927",
-  "prev_chapter": null,
-  "reader_url": "http://localhost:5646/manga/reader/33926?source=vortex&key=YOUR_KEY",
-  "iframe_embed": "<iframe src=\"http://localhost:5646/manga/reader/33926?source=vortex&key=YOUR_KEY\" width=\"100%\" height=\"800\" frameborder=\"0\" allowfullscreen></iframe>",
-  "pages": [
-    {
-      "page": 1,
-      "url": "http://localhost:5646/proxy_image?url=https%3A%2F%2Fstorage.vortexscans.org%2Fupload%2Fseries%2F...webp&referer=https%3A%2F%2Fvortexscans.org%2F",
-      "raw_url": "https://storage.vortexscans.org/upload/series/...webp"
-    }
-  ]
-}
 ```
 
 ---
@@ -368,19 +458,25 @@ http://localhost:5646/manga/reader/{chapter_id}?source={vortex|mangadex}&key={YO
 
 ---
 
-## 5. Code Examples
+## 6. Code Examples
 
 ### cURL
 
 ```bash
-# 1. Get Anime Player Embed
+# 1. Check Anime Releases (One Piece)
+curl -X GET "http://localhost:5646/api/anime/releases/21?key=YOUR_API_KEY"
+
+# 2. Check Manga Releases with Panel Images
+curl -X GET "http://localhost:5646/api/manga/releases/the-rebel-of-the-apocalypse-academy?include_pages=true&key=YOUR_API_KEY"
+
+# 3. Unified Release Tracking Hub
+curl -X GET "http://localhost:5646/api/releases?type=anime&id=21&key=YOUR_API_KEY"
+
+# 4. Get Anime Player Embed
 curl -X GET "http://localhost:5646/api/anime/player?id=21&episode=1&key=YOUR_API_KEY"
 
-# 2. Search Manga
-curl -X GET "http://localhost:5646/api/manga/search?q=Solo+Leveling&key=YOUR_API_KEY"
-
-# 3. Get Chapter Pages
-curl -X GET "http://localhost:5646/api/manga/chapter/33926?source=vortex&key=YOUR_API_KEY"
+# 5. Get Chapter Pages
+curl -X GET "http://localhost:5646/api/manga/chapter/34018?source=vortex&key=YOUR_API_KEY"
 ```
 
 ---
@@ -388,98 +484,90 @@ curl -X GET "http://localhost:5646/api/manga/chapter/33926?source=vortex&key=YOU
 ### JavaScript / Fetch
 
 ```javascript
-const API_BASE = "http://localhost:5646";
+const API_BASE = "https://anime-and-manwhua.vercel.app";
 const API_KEY = "YOUR_API_KEY";
 
-// 1. Load built-in anime player inside your page
-async function embedAnimePlayer(animeId, episodeNumber, containerElement) {
-  const res = await fetch(`${API_BASE}/api/anime/player?id=${animeId}&episode=${episodeNumber}&key=${API_KEY}`);
+// 1. Check how many episodes have released and get next airing countdown
+async function checkAnimeRelease(animeId) {
+  const res = await fetch(`${API_BASE}/api/anime/releases/${animeId}?key=${API_KEY}`);
   const data = await res.json();
-  
-  // Directly insert the iframe
-  containerElement.innerHTML = data.iframe_embed;
+  console.log(`Title: ${data.title}`);
+  console.log(`Episodes Released: ${data.released_episodes_count}`);
+  if (data.next_airing) {
+    console.log(`Episode ${data.next_airing.episode} airs in: ${data.next_airing.countdown}`);
+  }
+  return data;
 }
 
-// 2. Search Manhwa and display titles + HD posters
-async function searchManhwa(query) {
-  const res = await fetch(`${API_BASE}/api/manga/search?q=${encodeURIComponent(query)}&type=manhwa&key=${API_KEY}`);
+// 2. Check how many chapters have released and get panel preview images
+async function checkMangaRelease(mangaSlug) {
+  const res = await fetch(`${API_BASE}/api/manga/releases/${mangaSlug}?include_pages=true&key=${API_KEY}`);
   const data = await res.json();
-  
-  data.results.forEach(manga => {
-    console.log(`${manga.title} - Poster: ${manga.poster}`);
-    console.log(`Details: ${manga.info_url}`);
-  });
+  console.log(`Title: ${data.title}`);
+  console.log(`Chapters Released: ${data.released_chapters_count}`);
+  console.log(`Latest Chapter: ${data.latest_released_chapter.number}`);
+  console.log(`Panels count: ${data.chapter_panels?.pages_count}`);
+  return data;
 }
 
-// 3. Fetch Chapter Pages to display custom viewer
-async function getChapterImages(chapterId) {
-  const res = await fetch(`${API_BASE}/api/manga/chapter/${chapterId}?source=vortex&key=${API_KEY}`);
+// 3. Embed anime player inside a container
+async function embedPlayer(animeId, episode, container) {
+  const res = await fetch(`${API_BASE}/api/anime/player?id=${animeId}&episode=${episode}&key=${API_KEY}`);
   const data = await res.json();
-  
-  data.pages.forEach(p => {
-    const img = document.createElement("img");
-    img.src = p.url; // Safe proxied URL
-    document.body.appendChild(img);
-  });
+  container.innerHTML = data.iframe_embed;
 }
 ```
 
 ---
 
-### Python (requests / httpx)
+### Python (httpx / requests)
 
 ```python
-import requests
+import httpx
 
-API_BASE = "http://localhost:5646"
+API_BASE = "https://anime-and-manwhua.vercel.app"
 API_KEY = "YOUR_API_KEY"
+
 headers = {"X-API-Key": API_KEY}
 
-# 1. Get Anime Player Info
-resp = requests.get(f"{API_BASE}/api/anime/player", params={"id": 21, "episode": 1}, headers=headers)
-player_data = resp.json()
-print("Player Web URL:", player_data["player_url"])
-print("Iframe Code:", player_data["iframe_embed"])
+# 1. Track Anime Release
+res_anime = httpx.get(f"{API_BASE}/api/anime/releases/21", headers=headers)
+anime = res_anime.json()
+print(f"Anime: {anime['title']} | Released: {anime['released_episodes_count']} eps")
 
-# 2. Search Manga with AniList HD Covers
-resp = requests.get(f"{API_BASE}/api/manga/search", params={"q": "Swordmaster"}, headers=headers)
-results = resp.json()["results"]
-for m in results:
-    print(f"Title: {m['title']} | Cover: {m['poster']}")
-
-# 3. Get Chapter Pages
-resp = requests.get(f"{API_BASE}/api/manga/chapter/33926", params={"source": "vortex"}, headers=headers)
-chapter_info = resp.json()
-print(f"Total Pages: {chapter_info['pages_count']}")
-for page in chapter_info["pages"][:5]:
-    print("Page URL:", page["url"])
+# 2. Track Manga Release with panels
+res_manga = httpx.get(
+    f"{API_BASE}/api/manga/releases/the-rebel-of-the-apocalypse-academy",
+    params={"include_pages": "true"},
+    headers=headers
+)
+manga = res_manga.json()
+print(f"Manga: {manga['title']} | Released: {manga['released_chapters_count']} chs")
+if manga.get("chapter_panels"):
+    print(f"Panel 1 URL: {manga['chapter_panels']['pages'][0]['url']}")
 ```
 
 ---
 
 ### HTML iFrame Embed
 
-You can embed the anime player or manga reader anywhere on your website with a single line of code:
-
-#### Anime Video Player Embed:
 ```html
-<iframe
-  src="http://localhost:5646/player?id=21&episode=1&type=sub&key=YOUR_API_KEY"
-  width="100%"
-  height="600"
-  frameborder="0"
-  allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+<!-- Embed the built-in anime player -->
+<iframe 
+  src="https://anime-and-manwhua.vercel.app/player?id=21&episode=1&key=YOUR_API_KEY" 
+  width="100%" 
+  height="600" 
+  frameborder="0" 
+  allow="autoplay; fullscreen; picture-in-picture" 
   allowfullscreen>
 </iframe>
-```
 
-#### Manga Reader Embed:
-```html
-<iframe
-  src="http://localhost:5646/manga/reader/33926?source=vortex&key=YOUR_API_KEY"
-  width="100%"
-  height="850"
-  frameborder="0"
+<!-- Embed the continuous manga webtoon reader -->
+<iframe 
+  src="https://anime-and-manwhua.vercel.app/manga/reader/34018?source=vortex&key=YOUR_API_KEY" 
+  width="100%" 
+  height="800" 
+  frameborder="0" 
   allowfullscreen>
 </iframe>
 ```

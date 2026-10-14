@@ -1,4 +1,5 @@
 import asyncio
+import re
 from typing import Optional, List, Dict, Any
 from urllib.parse import quote
 from fastapi import APIRouter, Depends, Query, Request, HTTPException
@@ -201,6 +202,163 @@ async def api_anime_episodes(
         "total_episodes": len(formatted_episodes),
         "poster": (media.get("coverImage") or {}).get("extraLarge") or (media.get("coverImage") or {}).get("large"),
         "banner": media.get("bannerImage"),
+        "episodes": formatted_episodes
+    }
+
+
+@api_router.get("/anime/releases/{anime_id}")
+async def api_anime_releases(
+    anime_id: int,
+    type: str = Query("sub", description="Audio type: 'sub' or 'dub'"),
+    request: Request = None,
+    auth: Dict[str, Any] = Depends(require_api_key)
+):
+    """
+    Get comprehensive release tracking for an anime series:
+    - Exact count of episodes released / aired so far
+    - Total expected episodes and airing status (RELEASING, FINISHED, NOT_YET_RELEASED)
+    - Next episode countdown and scheduled airing timestamp (if currently airing)
+    - Official AniList HD posters and banner
+    - Latest released episode and complete list of released episodes with direct player URLs and iframe embed codes
+    """
+    key = auth.get("key", "")
+    host = str(request.base_url).rstrip("/")
+
+    gql = """
+    query ($id: Int) {
+        Media(id: $id, type: ANIME) {
+            id
+            idMal
+            title { english romaji native }
+            coverImage { extraLarge large medium color }
+            bannerImage
+            episodes
+            status
+            format
+            genres
+            averageScore
+            description(asHtml: false)
+            startDate { year month day }
+            endDate { year month day }
+            nextAiringEpisode {
+                airingAt
+                timeUntilAiring
+                episode
+            }
+        }
+    }
+    """
+    try:
+        media_data = await anilist_query(gql, {"id": anime_id})
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"AniList query failed: {str(e)}")
+
+    media = media_data.get("Media")
+    if not media:
+        raise HTTPException(status_code=404, detail=f"Anime with ID {anime_id} not found.")
+
+    t = media.get("title") or {}
+    title = t.get("english") or t.get("romaji") or t.get("native") or f"Anime {anime_id}"
+
+    # Fetch provider streamable episodes
+    provider_episodes = []
+    try:
+        native = await asyncio.wait_for(provider_race.merged_episodes(anime_id), timeout=2.5)
+        if native and isinstance(native, dict) and "providers" in native:
+            for p_name, p_data in native["providers"].items():
+                p_eps = (p_data.get("episodes") or {}).get(type) or (p_data.get("episodes") or {}).get("sub") or (p_data.get("episodes") or {}).get("dub")
+                if p_eps and isinstance(p_eps, list) and len(p_eps) > len(provider_episodes):
+                    provider_episodes = p_eps
+    except Exception:
+        pass
+
+    # Calculate released episodes count
+    next_ep = media.get("nextAiringEpisode")
+    status = media.get("status") or "UNKNOWN"
+    total_expected = media.get("episodes")
+
+    if next_ep and next_ep.get("episode"):
+        released_count = max(0, int(next_ep["episode"]) - 1)
+    elif status == "FINISHED" and total_expected:
+        released_count = int(total_expected)
+    elif provider_episodes:
+        released_count = len(provider_episodes)
+    elif total_expected:
+        released_count = int(total_expected)
+    else:
+        released_count = max(len(provider_episodes), 1)
+
+    # Calculate next airing countdown
+    next_airing_info = None
+    if next_ep:
+        airing_at = next_ep.get("airingAt")
+        seconds = next_ep.get("timeUntilAiring", 0)
+        days = seconds // 86400
+        hours = (seconds % 86400) // 3600
+        mins = (seconds % 3600) // 60
+        countdown_str = f"{days}d {hours}h {mins}m" if days > 0 else f"{hours}h {mins}m"
+        next_airing_info = {
+            "episode": next_ep.get("episode"),
+            "airing_at_timestamp": airing_at,
+            "time_until_airing_seconds": seconds,
+            "countdown": countdown_str
+        }
+
+    # Format list of released episodes
+    formatted_episodes = []
+    max_ep_num = max(released_count, len(provider_episodes))
+    prov_dict = {}
+    for pe in provider_episodes:
+        pnum = pe.get("number") or pe.get("episode")
+        if pnum is not None:
+            try:
+                prov_dict[int(pnum)] = pe
+            except ValueError:
+                pass
+
+    for i in range(1, max_ep_num + 1):
+        pe = prov_dict.get(i)
+        ep_title = (pe.get("title") if pe else None) or f"Episode {i}"
+        ep_thumb = (pe.get("image") or pe.get("thumbnail") if pe else None) or (media.get("coverImage") or {}).get("large")
+        player_url = f"{host}/player?id={anime_id}&episode={i}&key={quote(key)}"
+        iframe_snippet = f'<iframe src="{player_url}" width="100%" height="100%" frameborder="0" allowfullscreen allow="autoplay; fullscreen; picture-in-picture"></iframe>'
+        stream_api = f"{host}/api/anime/stream?id={anime_id}&episode={i}&type={type}&key={quote(key)}"
+
+        formatted_episodes.append({
+            "number": i,
+            "title": ep_title,
+            "thumbnail": ep_thumb,
+            "player_url": player_url,
+            "iframe_embed": iframe_snippet,
+            "stream_api": stream_api
+        })
+
+    latest_ep = formatted_episodes[-1] if formatted_episodes else None
+    first_ep = formatted_episodes[0] if formatted_episodes else None
+
+    cov = media.get("coverImage") or {}
+    poster = cov.get("extraLarge") or cov.get("large") or cov.get("medium")
+
+    return {
+        "id": anime_id,
+        "mal_id": media.get("idMal"),
+        "title": title,
+        "title_english": t.get("english"),
+        "title_romaji": t.get("romaji"),
+        "title_native": t.get("native"),
+        "format": media.get("format"),
+        "status": status,
+        "is_airing": status == "RELEASING",
+        "released_episodes_count": len(formatted_episodes),
+        "total_expected_episodes": total_expected,
+        "latest_released_episode": latest_ep,
+        "first_released_episode": first_ep,
+        "next_airing": next_airing_info,
+        "poster": poster,
+        "banner": media.get("bannerImage"),
+        "score": media.get("averageScore"),
+        "genres": media.get("genres", []),
+        "synopsis": media.get("description") or "",
         "episodes": formatted_episodes
     }
 
@@ -650,3 +808,247 @@ async def api_manga_chapter(
         "iframe_embed": iframe_embed,
         "pages": formatted_pages
     }
+
+
+@api_router.get("/manga/releases/{slug_or_id}")
+async def api_manga_releases(
+    slug_or_id: str,
+    source: str = Query("vortex", description="Source provider: 'vortex', 'mangadex', or 'auto'"),
+    include_pages: bool = Query(False, description="Whether to include panel images for the target chapter"),
+    chapter: Optional[str] = Query(None, description="'latest', 'first', or specific chapter number/ID to retrieve panel images"),
+    limit: int = Query(250, ge=1, le=500, description="Max chapters to return"),
+    request: Request = None,
+    auth: Dict[str, Any] = Depends(require_api_key)
+):
+    """
+    Get detailed release tracking for a manga, manhwa, or manhua:
+    - Exact count of chapters released so far
+    - Latest released chapter & first released chapter
+    - High-definition official posters and banner
+    - Panel images of the latest (or selected) chapter formatted with CORS-safe /proxy_image URLs
+    - Complete ordered chapter catalog with direct reader URLs and iframe embed snippets
+    """
+    key = auth.get("key", "")
+    host = str(request.base_url).rstrip("/")
+
+    chapters_data = None
+    used_source = source
+
+    if source in ("vortex", "auto"):
+        try:
+            v_res = await fetch_vortex_chapters(slug_or_id)
+            if v_res and v_res.get("chapters"):
+                chapters_data = v_res
+                used_source = "vortex"
+        except Exception:
+            pass
+
+    if not chapters_data and source in ("mangadex", "auto"):
+        try:
+            is_uuid = "-" in slug_or_id and len(slug_or_id) >= 32
+            target_id = slug_or_id
+            target_title = slug_or_id
+            if not is_uuid:
+                md_s = await search_mangadex(slug_or_id, limit=1)
+                if md_s:
+                    target_id = md_s[0]["id"]
+                    target_title = md_s[0]["title"]
+            md_res = await fetch_mangadex_chapters(target_id, limit=limit)
+            if md_res and md_res.get("chapters"):
+                md_res["title"] = target_title
+                md_res["slug"] = target_id
+                md_res["type"] = "MANGA"
+                chapters_data = md_res
+                used_source = "mangadex"
+        except Exception:
+            pass
+
+    if not chapters_data or not chapters_data.get("chapters"):
+        raise HTTPException(
+            status_code=404,
+            detail=f"No released chapters found for '{slug_or_id}' on source '{source}'."
+        )
+
+    raw_chapters = chapters_data.get("chapters", [])
+    series_title = chapters_data.get("title") or slug_or_id
+    series_slug = chapters_data.get("slug") or slug_or_id
+    series_type = chapters_data.get("type") or "MANHWA"
+
+    # Sort chapters in descending order by chapter number (latest first)
+    def parse_ch_num(ch_obj):
+        val = str(ch_obj.get("number") or "0")
+        try:
+            return float(re.findall(r"\d+(?:\.\d+)?", val)[0])
+        except Exception:
+            return 0.0
+
+    sorted_chapters = sorted(raw_chapters, key=parse_ch_num, reverse=True)
+
+    # Fetch official AniList poster, banner, and metadata
+    poster = None
+    banner = None
+    synopsis = ""
+    status = "RELEASING"
+    genres = []
+    score = None
+
+    try:
+        anilist_meta = await query_anilist_manga(search=series_title, per_page=1)
+        res_list = anilist_meta.get("results", [])
+        if res_list:
+            top_meta = res_list[0]
+            poster = top_meta.get("cover")
+            banner = top_meta.get("banner")
+            synopsis = top_meta.get("synopsis") or ""
+            status = top_meta.get("status") or "RELEASING"
+            genres = top_meta.get("genres") or []
+            score = top_meta.get("score")
+    except Exception:
+        pass
+
+    if not poster:
+        poster = await get_or_fetch_anilist_poster(series_title)
+    if not poster:
+        poster = chapters_data.get("cover")
+
+    formatted_chapters = []
+    for ch in sorted_chapters[:limit]:
+        ch_id = str(ch.get("id"))
+        ch_num = str(ch.get("number") or "0")
+        ch_title = ch.get("title") or f"Chapter {ch_num}"
+        reader_url = f"{host}/manga/reader/{ch_id}?source={used_source}&key={quote(key)}"
+        chapter_api = f"{host}/api/manga/chapter/{ch_id}?source={used_source}&key={quote(key)}"
+        formatted_chapters.append({
+            "id": ch_id,
+            "number": ch_num,
+            "title": ch_title,
+            "is_locked": ch.get("is_locked", False),
+            "release_date": ch.get("created_at") or ch.get("releaseDate") or ch.get("date"),
+            "reader_url": reader_url,
+            "chapter_api": chapter_api
+        })
+
+    latest_ch = formatted_chapters[0] if formatted_chapters else None
+    first_ch = formatted_chapters[-1] if formatted_chapters else None
+    latest_unlocked_ch = next((c for c in formatted_chapters if not c.get("is_locked")), latest_ch)
+
+    # Handle panel images
+    chapter_panels = None
+    if include_pages or chapter is not None:
+        target_ch = latest_ch
+        if chapter:
+            if chapter.lower() == "first":
+                target_ch = first_ch
+            elif chapter.lower() == "latest":
+                target_ch = latest_ch
+            elif chapter.lower() in ("latest_unlocked", "unlocked", "free"):
+                target_ch = latest_unlocked_ch
+            else:
+                found = next((c for c in formatted_chapters if c["number"] == chapter or c["id"] == chapter), None)
+                if found:
+                    target_ch = found
+        elif latest_ch and latest_ch.get("is_locked") and latest_unlocked_ch:
+            target_ch = latest_unlocked_ch
+
+        if target_ch:
+            target_id = target_ch["id"]
+            try:
+                if used_source == "mangadex":
+                    raw_pages_data = await fetch_mangadex_chapter_pages(target_id)
+                else:
+                    raw_pages_data = await fetch_vortex_chapter_pages(target_id)
+
+                p_list = raw_pages_data.get("pages", [])
+                p_ref = raw_pages_data.get("referer", "https://vortexscans.org/")
+                formatted_pages = []
+                for idx, p_url in enumerate(p_list, 1):
+                    proxied_url = f"{host}/proxy_image?url={quote(p_url, safe='')}&referer={quote(p_ref, safe='')}"
+                    formatted_pages.append({
+                        "page": idx,
+                        "url": proxied_url,
+                        "raw_url": p_url
+                    })
+
+                ch_reader_url = f"{host}/manga/reader/{target_id}?source={used_source}&key={quote(key)}"
+                chapter_panels = {
+                    "chapter_id": target_id,
+                    "number": target_ch["number"],
+                    "title": target_ch["title"],
+                    "is_locked": target_ch.get("is_locked", False),
+                    "pages_count": len(formatted_pages),
+                    "reader_url": ch_reader_url,
+                    "iframe_embed": f'<iframe src="{ch_reader_url}" width="100%" height="800" frameborder="0" allowfullscreen></iframe>',
+                    "pages": formatted_pages
+                }
+            except Exception as e:
+                chapter_panels = {
+                    "chapter_id": target_id,
+                    "error": f"Failed to fetch panel images: {str(e)}"
+                }
+
+    return {
+        "id": chapters_data.get("id"),
+        "title": series_title,
+        "slug": series_slug,
+        "type": series_type,
+        "source": used_source,
+        "status": status,
+        "released_chapters_count": len(sorted_chapters),
+        "poster": poster,
+        "banner": banner,
+        "synopsis": synopsis,
+        "genres": genres,
+        "score": score,
+        "latest_released_chapter": latest_ch,
+        "latest_unlocked_chapter": latest_unlocked_ch,
+        "first_released_chapter": first_ch,
+        "chapter_panels": chapter_panels,
+        "chapters": formatted_chapters
+    }
+
+
+# ==========================================================
+# 3. UNIFIED RELEASES ENDPOINT
+# ==========================================================
+
+@api_router.get("/releases")
+async def api_unified_releases(
+    type: str = Query(..., description="Media type: 'anime' or 'manga'"),
+    id: str = Query(..., description="AniList Anime ID (for anime) or Manga slug/ID (for manga)"),
+    source: str = Query("vortex", description="For manga: 'vortex', 'mangadex', or 'auto'"),
+    include_pages: bool = Query(False, description="For manga: whether to include chapter panel images"),
+    chapter: Optional[str] = Query(None, description="For manga: target chapter ('latest', 'first', or chapter number)"),
+    sub_or_dub: str = Query("sub", description="For anime: audio type 'sub' or 'dub'"),
+    limit: int = Query(250, ge=1, le=500, description="For manga: max chapters to return"),
+    request: Request = None,
+    auth: Dict[str, Any] = Depends(require_api_key)
+):
+    """
+    Unified Release Tracking Hub for both Anime & Manga/Manhwa:
+    - Automatically routes to Anime Releases or Manga Releases
+    - Returns exact counts of released episodes or chapters
+    - High-definition official posters and artwork
+    - Proper panel preview images and direct streaming/reading players
+    """
+    media_type = type.strip().lower()
+    if media_type == "anime":
+        try:
+            anime_id = int(id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="For anime releases, 'id' must be an integer AniList ID.")
+        return await api_anime_releases(anime_id=anime_id, type=sub_or_dub, request=request, auth=auth)
+    elif media_type in ("manga", "manhwa", "manhua"):
+        return await api_manga_releases(
+            slug_or_id=id,
+            source=source,
+            include_pages=include_pages,
+            chapter=chapter,
+            limit=limit,
+            request=request,
+            auth=auth
+        )
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid media type '{type}'. Please specify 'anime' or 'manga'."
+        )
