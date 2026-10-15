@@ -178,58 +178,74 @@ async def proxy_m3u8(url: str, referer: str):
     url = _norm_url(url)
     if not url:
         return Response(content='{"detail":"bad proxy url"}', status_code=400,
-                        media_type="application/json")
-    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True, verify=False) as client:
-        h = HEADERS.copy()
-        h["Referer"] = referer
-        resp = await client.get(url, headers=h)
+                        media_type="application/json", headers={"Access-Control-Allow-Origin": "*"})
+    try:
+        from urllib.parse import urlparse
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True, verify=False) as client:
+            h = HEADERS.copy()
+            p = urlparse(referer)
+            origin = f"{p.scheme}://{p.netloc}" if p.scheme and p.netloc else referer
+            h["Referer"] = referer
+            h["Origin"] = origin
+            resp = await client.get(url, headers=h)
+            if resp.status_code != 200:
+                return Response(content=resp.content, status_code=resp.status_code, media_type="text/plain",
+                                headers={"Access-Control-Allow-Origin": "*"})
 
-        content = resp.text
-        lines = []
-        is_variant = False
-        for line in content.splitlines():
-            stripped = line.strip()
-            if not stripped:
-                lines.append(line)
-                continue
-
-            # Handle URI inside EXT-X-MEDIA (audio/subtitles)
-            if stripped.startswith('#EXT-X-MEDIA:'):
-                def _sub_media(m):
-                    media_url = urljoin(url, m.group(1))
-                    return f'URI="/proxy_m3u8?url={quote(media_url, safe="")}&referer={quote(referer, safe="")}"'
-                line = re.sub(r'URI="([^"]+)"', _sub_media, line)
-                lines.append(line)
-                continue
-
-            # Handle URI inside EXT-X-MAP (initialization header segment)
-            if stripped.startswith('#EXT-X-MAP:'):
-                def _sub_map(m):
-                    seg_url = urljoin(url, m.group(1))
-                    return f'URI="/proxy_segment?url={quote(seg_url, safe="")}&referer={quote(referer, safe="")}"'
-                line = re.sub(r'URI="([^"]+)"', _sub_map, line)
-                lines.append(line)
-                continue
-
-            if stripped.startswith('#EXT-X-STREAM-INF:') or stripped.startswith('#EXT-X-I-FRAME-STREAM-INF:'):
-                is_variant = True
-                lines.append(line)
-                continue
-
-            if stripped.startswith('#'):
-                lines.append(line)
-                continue
-
-            # Non-comment line (URL)
-            absolute_url = urljoin(url, stripped)
-            if is_variant or '.m3u8' in stripped.lower():
-                line = f"/proxy_m3u8?url={quote(absolute_url, safe='')}&referer={quote(referer, safe='')}"
-            else:
-                line = f"/proxy_segment?url={quote(absolute_url, safe='')}&referer={quote(referer, safe='')}"
+            content = resp.text
+            lines = []
             is_variant = False
-            lines.append(line)
+            for line in content.splitlines():
+                stripped = line.strip()
+                if not stripped:
+                    lines.append(line)
+                    continue
 
-        return Response(content='\n'.join(lines), media_type="application/vnd.apple.mpegurl")
+                # Handle URI inside EXT-X-MEDIA (audio/subtitles)
+                if stripped.startswith('#EXT-X-MEDIA:'):
+                    def _sub_media(m):
+                        media_url = urljoin(url, m.group(1))
+                        return f'URI="/proxy_m3u8?url={quote(media_url, safe="")}&referer={quote(referer, safe="")}"'
+                    line = re.sub(r'URI="([^"]+)"', _sub_media, line)
+                    lines.append(line)
+                    continue
+
+                # Handle URI inside EXT-X-MAP (initialization header segment)
+                if stripped.startswith('#EXT-X-MAP:'):
+                    def _sub_map(m):
+                        seg_url = urljoin(url, m.group(1))
+                        return f'URI="/proxy_segment?url={quote(seg_url, safe="")}&referer={quote(referer, safe="")}"'
+                    line = re.sub(r'URI="([^"]+)"', _sub_map, line)
+                    lines.append(line)
+                    continue
+
+                if stripped.startswith('#EXT-X-STREAM-INF:') or stripped.startswith('#EXT-X-I-FRAME-STREAM-INF:'):
+                    is_variant = True
+                    lines.append(line)
+                    continue
+
+                if stripped.startswith('#'):
+                    lines.append(line)
+                    continue
+
+                # Non-comment line (URL)
+                absolute_url = urljoin(url, stripped)
+                if is_variant or '.m3u8' in stripped.lower():
+                    line = f"/proxy_m3u8?url={quote(absolute_url, safe='')}&referer={quote(referer, safe='')}"
+                else:
+                    line = f"/proxy_segment?url={quote(absolute_url, safe='')}&referer={quote(referer, safe='')}"
+                is_variant = False
+                lines.append(line)
+
+            res_headers = {
+                "Access-Control-Allow-Origin": "*",
+                "Cache-Control": "public, max-age=3600"
+            }
+            return Response(content='\n'.join(lines), media_type="application/vnd.apple.mpegurl", headers=res_headers)
+    except Exception as e:
+        print(f"[PROXY] m3u8 proxy error: {e}")
+        return Response(content=f'#EXTM3U\n# Error: {str(e)}', status_code=502,
+                        media_type="application/vnd.apple.mpegurl", headers={"Access-Control-Allow-Origin": "*"})
 
 
 @app.get("/proxy_segment")
@@ -237,18 +253,31 @@ async def proxy_segment(url: str, referer: str, request: Request):
     url = _norm_url(url)
     if not url:
         return Response(content='{"detail":"bad proxy url"}', status_code=400,
-                        media_type="application/json")
-    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, verify=False) as client:
-        h = HEADERS.copy()
-        h["Referer"] = referer
-        range_h = request.headers.get("Range")
-        if range_h:
-            h["Range"] = range_h
-        resp = await client.get(url, headers=h)
-        res_h = {"Content-Type": "video/mp2t", "Accept-Ranges": "bytes"}
-        if "content-range" in resp.headers:
-            res_h["Content-Range"] = resp.headers["content-range"]
-        return Response(content=resp.content, status_code=resp.status_code, headers=res_h)
+                        media_type="application/json", headers={"Access-Control-Allow-Origin": "*"})
+    try:
+        from urllib.parse import urlparse
+        async with httpx.AsyncClient(timeout=25.0, follow_redirects=True, verify=False) as client:
+            h = HEADERS.copy()
+            p = urlparse(referer)
+            origin = f"{p.scheme}://{p.netloc}" if p.scheme and p.netloc else referer
+            h["Referer"] = referer
+            h["Origin"] = origin
+            range_h = request.headers.get("Range")
+            if range_h:
+                h["Range"] = range_h
+            resp = await client.get(url, headers=h)
+            res_h = {
+                "Content-Type": "video/mp2t",
+                "Accept-Ranges": "bytes",
+                "Access-Control-Allow-Origin": "*",
+                "Cache-Control": "public, max-age=86400"
+            }
+            if "content-range" in resp.headers:
+                res_h["Content-Range"] = resp.headers["content-range"]
+            return Response(content=resp.content, status_code=resp.status_code, headers=res_h)
+    except Exception as e:
+        print(f"[PROXY] segment proxy error: {e}")
+        return Response(content=b"", status_code=502, headers={"Access-Control-Allow-Origin": "*"})
 
 
 @app.get("/proxy_mp4")
@@ -278,6 +307,7 @@ async def proxy_mp4(url: str, referer: str, request: Request, download: bool = F
             resp_headers["content-type"] = "video/mp4"
         if "accept-ranges" not in resp_headers:
             resp_headers["accept-ranges"] = "bytes"
+        resp_headers["Access-Control-Allow-Origin"] = "*"
         if download:
             fn = filename or "episode.mp4"
             if not fn.endswith(".mp4"):

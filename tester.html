@@ -1560,7 +1560,12 @@
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <div class="provider-select-box">
                         <select id="providerSelect" onchange="switchProvider(this.value)">
-                            <option value="aniwaves" selected>AniWaves (Online 🟢)</option>
+                            <option value="auto" selected>⚡ Auto (Fastest Live Stream)</option>
+                            <option value="anikoto">🟢 AniKoto (Multi-Server)</option>
+                            <option value="aniwaves">🟢 AniWaves (Vidplay/Filemoon)</option>
+                            <option value="anizone">🟢 AniZone (Fast CDN)</option>
+                            <option value="kaa">🟢 Kaa (VidStreaming)</option>
+                            <option value="animegg">🟢 AnimeGG (Direct MP4)</option>
                         </select>
                     </div>
                     <span style="font-size:0.78rem; color:var(--text-muted);" id="streamInfoStatus">Ready to stream</span>
@@ -2462,6 +2467,12 @@
                 streamPlayUrl = `${API_BASE}/proxy_mp4?url=${encodeURIComponent(stream.url)}&referer=${encodeURIComponent(referer)}`;
             } else if (type === 'hls') {
                 streamPlayUrl = `${API_BASE}/proxy_m3u8?url=${encodeURIComponent(stream.url)}&referer=${encodeURIComponent(referer)}`;
+            } else if (type === 'embed') {
+                const container = document.getElementById('artplayer-container');
+                if (container) {
+                    container.innerHTML = `<iframe src="${stream.url}" width="100%" height="100%" frameborder="0" allowfullscreen allow="autoplay; fullscreen; picture-in-picture"></iframe>`;
+                }
+                return;
             }
 
             // Extract subtitle if valid & proxy to prevent CORS blocks

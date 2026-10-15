@@ -5,8 +5,8 @@ import time
 from src.providers._media import build_ctx
 
 RANKING = [
-    "anineko", "anizone", "anikoto", "reanime", "aniwaves",
-    "kaa", "anibd", "animegg", "mkissa", "animeonsen",
+    "anikoto", "aniwaves", "anizone", "kaa", "animegg",
+    "mkissa", "anineko", "animeonsen",
 ]
 
 WATCH_TIMEOUT = 10.0
@@ -71,8 +71,18 @@ async def _watch_one(mod, name, anilist_id, ep, audio, ctx):
         streams = await asyncio.wait_for(mod.watch(anilist_id, audio, ep, ctx), WATCH_TIMEOUT)
         dt = round(time.time() - t0, 3)
         if streams:
-            _watch_cache[key] = (time.time() + WATCH_CACHE_TTL, streams)
-            return name, streams, dt, True
+            valid_streams = []
+            for s in streams:
+                u = s.get("url", "")
+                if not u or not u.startswith("http"):
+                    continue
+                # Exclude known broken / dead domains
+                if any(bad in u for bad in ("nukitashi.top", "animeapps.top", "playeng.animeapps")):
+                    continue
+                valid_streams.append(s)
+            if valid_streams:
+                _watch_cache[key] = (time.time() + WATCH_CACHE_TTL, valid_streams)
+                return name, valid_streams, dt, True
         return name, None, dt, False
     except Exception as e:
         return name, None, round(time.time() - t0, 3), False

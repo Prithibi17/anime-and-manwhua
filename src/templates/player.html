@@ -415,6 +415,12 @@
                 streamPlayUrl = `/proxy_mp4?url=${encodeURIComponent(stream.url)}&referer=${encodeURIComponent(referer)}`;
             } else if (type === 'hls') {
                 streamPlayUrl = `/proxy_m3u8?url=${encodeURIComponent(stream.url)}&referer=${encodeURIComponent(referer)}`;
+            } else if (type === 'embed') {
+                const container = document.getElementById('artplayer-container');
+                if (container) {
+                    container.innerHTML = `<iframe src="${stream.url}" width="100%" height="100%" frameborder="0" allowfullscreen allow="autoplay; fullscreen; picture-in-picture"></iframe>`;
+                }
+                return;
             }
 
             // Extract primary subtitle
