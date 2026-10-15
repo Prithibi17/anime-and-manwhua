@@ -19,6 +19,15 @@ _IN_MEMORY_KEYS = [
         "calls": 0,
         "last_used": None,
         "status": "active"
+    },
+    {
+        "id": "key_prod_demo",
+        "name": "Production Demo Key",
+        "key": "kuhi_live_prod_access_unlimited_8829",
+        "created_at": "2026-10-14 13:09:58",
+        "calls": 0,
+        "last_used": None,
+        "status": "active"
     }
 ]
 

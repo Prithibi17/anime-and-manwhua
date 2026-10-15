@@ -448,9 +448,42 @@ async def get_episodes(anilist_id: int):
         if native:
             return proxy_deep_images(native)
     except Exception as e:
-        print(f"[KUHI API] native episodes failed, falling back to pipe: {e}")
-    data = await fetch_raw_episodes(anilist_id)
-    return proxy_deep_images(inject_source_slugs(data, anilist_id))
+        print(f"[KUHI API] native episodes failed, falling back to pipe/metadata: {e}")
+
+    try:
+        data = await fetch_raw_episodes(anilist_id)
+        return proxy_deep_images(inject_source_slugs(data, anilist_id))
+    except Exception:
+        # Graceful fallback using AniList metadata
+        gql = """
+        query ($id: Int) {
+            Media(id: $id) {
+                id
+                episodes
+                nextAiringEpisode { episode }
+            }
+        }
+        """
+        try:
+            m_data = await anilist_query(gql, {"id": anilist_id})
+            media = m_data.get("Media") or {}
+            next_ep = (media.get("nextAiringEpisode") or {}).get("episode")
+            count = media.get("episodes") or (next_ep - 1 if next_ep and next_ep > 1 else 1)
+            fallback_eps = [{"number": i, "title": f"Episode {i}"} for i in range(1, count + 1)]
+            return {
+                "anilistId": anilist_id,
+                "source": "fallback",
+                "providers": {
+                    "auto": {
+                        "episodes": {
+                            "sub": fallback_eps,
+                            "dub": fallback_eps
+                        }
+                    }
+                }
+            }
+        except Exception:
+            raise HTTPException(status_code=404, detail="Could not locate anime episodes")
 
 
 @router.get("/providers/status")

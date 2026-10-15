@@ -151,6 +151,11 @@ async def api_anime_episodes(
             episodes
             status
             format
+            nextAiringEpisode {
+                episode
+                airingAt
+                timeUntilAiring
+            }
         }
     }
     """
@@ -159,22 +164,22 @@ async def api_anime_episodes(
     t = media.get("title") or {}
     title = t.get("english") or t.get("romaji") or f"Anime {anime_id}"
 
-    # Fetch provider episodes (with 2.0s fast timeout)
+    # Fetch provider episodes (with fast 3.8s race)
     episodes_list = []
     try:
-        native = await asyncio.wait_for(provider_race.merged_episodes(anime_id), timeout=2.0)
+        native = await asyncio.wait_for(provider_race.merged_episodes(anime_id), timeout=3.8)
         if native and isinstance(native, dict) and "providers" in native:
             for p_name, p_data in native["providers"].items():
                 p_eps = (p_data.get("episodes") or {}).get("sub") or (p_data.get("episodes") or {}).get("dub")
-                if p_eps and isinstance(p_eps, list):
+                if p_eps and isinstance(p_eps, list) and len(p_eps) > len(episodes_list):
                     episodes_list = p_eps
-                    break
     except Exception:
         pass
 
-    # If no provider episode list found, create synthetic entries from Anilist count
+    # If no provider episode list found, determine real episode count from AniList
     if not episodes_list:
-        total_eps = media.get("episodes") or 1
+        next_ep = (media.get("nextAiringEpisode") or {}).get("episode")
+        total_eps = media.get("episodes") or (next_ep - 1 if next_ep and next_ep > 1 else 1)
         episodes_list = [{"number": i, "title": f"Episode {i}"} for i in range(1, total_eps + 1)]
 
     formatted_episodes = []

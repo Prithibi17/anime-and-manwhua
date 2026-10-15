@@ -2190,7 +2190,11 @@
                 const title = (data.title && (data.title.english || data.title.romaji)) || "Anime Title";
                 currentAnimeTitle = title;
                 const poster = (data.coverImage && (data.coverImage.large || data.coverImage.extraLarge)) || "/assets/imgs/logo.png";
-                totalEpisodes = data.episodes || 12;
+                let epCount = data.episodes;
+                if (!epCount && data.nextAiringEpisode && data.nextAiringEpisode.episode) {
+                    epCount = Math.max(1, data.nextAiringEpisode.episode - 1);
+                }
+                totalEpisodes = epCount || 12;
 
                 document.getElementById('animeTitleText').textContent = title;
                 document.getElementById('posterImg').src = poster;
@@ -2201,6 +2205,26 @@
 
                 renderEpisodesGrid(totalEpisodes, currentEpisode);
                 loadStream(currentEpisode);
+
+                // Fetch actual provider episode count in background to ensure all released episodes are listed
+                fetch(`${API_BASE}/anime/episodes/${animeId}`)
+                    .then(r => r.json())
+                    .then(epData => {
+                        if (epData && epData.providers) {
+                            let maxEp = 0;
+                            Object.values(epData.providers).forEach(p => {
+                                const eps = (p.episodes && (p.episodes.sub || p.episodes.dub)) || [];
+                                if (eps.length > maxEp) maxEp = eps.length;
+                            });
+                            if (maxEp > 0 && maxEp !== totalEpisodes) {
+                                totalEpisodes = maxEp;
+                                document.getElementById('animeTotalEps').textContent = `${totalEpisodes} Episodes`;
+                                document.getElementById('episodesCountText').textContent = `${totalEpisodes} Episodes`;
+                                renderEpisodesGrid(totalEpisodes, currentEpisode);
+                            }
+                        }
+                    })
+                    .catch(() => {});
             } catch (err) {
                 renderEpisodesGrid(12, 1);
                 loadStream(1);

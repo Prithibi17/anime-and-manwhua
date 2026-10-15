@@ -9,14 +9,16 @@ RANKING = [
     "kaa", "anibd", "animegg", "mkissa", "animeonsen",
 ]
 
-WATCH_TIMEOUT = 75.0
-EPISODES_TIMEOUT = 60.0
-WATCH_CACHE_TTL = 45.0
+WATCH_TIMEOUT = 10.0
+EPISODES_TIMEOUT = 3.5
+WATCH_CACHE_TTL = 300.0
+EPISODES_CACHE_TTL = 600.0
 
 _latency: dict = {}
 _ep_latency: dict = {}
 _failures: dict = {}
 _watch_cache: dict = {}
+_episodes_cache: dict = {}
 
 
 def _load(name):
@@ -111,21 +113,9 @@ async def race_watch(anilist_id: int, ep: int, audio: str = "sub",
             if winner is not None:
                 break
     finally:
+        for task in pending:
+            task.cancel()
 
-        if pending:
-            try:
-                done2, pending2 = await asyncio.wait(pending, timeout=8.0)
-                for task in done2:
-                    try:
-                        name, streams, dt, ok = task.result()
-                        timings[name] = {"seconds": dt, "ok": ok}
-                        record_latency(name, dt, ok)
-                    except Exception:
-                        pass
-                pending = pending2
-            finally:
-                for task in pending:
-                    task.cancel()
     if winner is None:
         return None
     winner["timings"] = timings
@@ -144,22 +134,38 @@ async def _episodes_one(mod, name, anilist_id, ctx):
         record_latency(name, time.time() - t0, count > 0, kind="episodes")
         return name, data if count > 0 else None
     except Exception as e:
-        print(f"[RACE] {name} episodes failed: {str(e)[:120]}")
         record_latency(name, time.time() - t0, False, kind="episodes")
         return name, None
 
 
 async def merged_episodes(anilist_id: int) -> dict | None:
+    hit = _episodes_cache.get(anilist_id)
+    if hit and hit[0] > time.time():
+        return hit[1]
+
     mods = providers()
     if not mods:
         return None
     ctx = await build_ctx(anilist_id)
-    results = await asyncio.gather(
-        *[_episodes_one(mod, name, anilist_id, ctx) for name, mod in mods])
-    merged = {name: data for name, data in results if data}
+    tasks = [asyncio.create_task(_episodes_one(mod, name, anilist_id, ctx)) for name, mod in mods]
+    done, pending = await asyncio.wait(tasks, timeout=3.5)
+    for t in pending:
+        t.cancel()
+
+    merged = {}
+    for t in done:
+        try:
+            name, data = t.result()
+            if data:
+                merged[name] = data
+        except Exception:
+            pass
+
     if not merged:
         return None
-    return {"anilistId": anilist_id, "source": "native", "providers": merged}
+    res = {"anilistId": anilist_id, "source": "native", "providers": merged}
+    _episodes_cache[anilist_id] = (time.time() + EPISODES_CACHE_TTL, res)
+    return res
 
 
 def merge_subtitles(streams: list) -> list:

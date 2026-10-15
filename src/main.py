@@ -14,7 +14,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingRes
 
 from fastapi.staticfiles import StaticFiles
 
-from src.endpoints import router
+from src.endpoints import router, get_episodes, extract_simple, get_anime_info
 from src.manga.router import router as manga_router
 from src.health.router import router as health_router
 from src.api_routes import api_router
@@ -36,6 +36,27 @@ app.include_router(router, prefix="/anime")
 app.include_router(manga_router)
 app.include_router(health_router)
 app.include_router(api_router)
+
+# Top-level aliases for direct access
+@app.get("/episodes/{anilist_id}")
+async def root_episodes(anilist_id: int):
+    """Direct alias for /anime/episodes/{anilist_id}"""
+    return await get_episodes(anilist_id)
+
+@app.get("/extract/{query}")
+async def root_extract(
+    query: str,
+    e: int = Query(1, ge=1, description="episode number"),
+    type: str = Query("sub", description="audio track: 'sub' or 'dub'"),
+    provider: Optional[str] = Query(None, description="explicit provider override")
+):
+    """Direct alias for /anime/extract/{query}"""
+    return await extract_simple(query, episode=e, audio=type, provider=provider)
+
+@app.get("/info/{anilist_id}")
+async def root_info(anilist_id: int):
+    """Direct alias for /anime/info/{anilist_id}"""
+    return await get_anime_info(anilist_id)
 
 # ==========================================================
 # API KEYS PERSISTENCE & MANAGEMENT
