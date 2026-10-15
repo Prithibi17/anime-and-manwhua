@@ -763,13 +763,14 @@ async def _scrape_episode_watch(anilist_id: int, audio: str, ep_num: int, ctx: d
             durl = (resolved.get("result") or {}).get("url") if isinstance(resolved, dict) else None
         if durl and durl not in dl_seen:
             dl_seen.add(durl)
+            is_direct_mp4 = durl.split("?")[0].lower().endswith(".mp4")
             streams.append({
                 "url": durl,
-                "type": "mp4",
+                "type": "mp4" if is_direct_mp4 else "download",
                 "server": dl.get("name", "Download"),
                 "audio": aud,
                 "referer": BASE + "/",
-                "priority": 1,
+                "priority": 1 if is_direct_mp4 else 99,
                 "isActive": False,
             })
     return streams

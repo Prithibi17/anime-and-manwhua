@@ -5,7 +5,7 @@ import time
 from src.providers._media import build_ctx
 
 RANKING = [
-    "anikoto", "aniwaves", "anizone", "kaa", "animegg",
+    "kaa", "animegg", "anikoto", "anizone", "aniwaves",
     "mkissa", "anineko", "animeonsen",
 ]
 

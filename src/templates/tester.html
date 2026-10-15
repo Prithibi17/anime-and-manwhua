@@ -1561,11 +1561,11 @@
                     <div class="provider-select-box">
                         <select id="providerSelect" onchange="switchProvider(this.value)">
                             <option value="auto" selected>⚡ Auto (Fastest Live Stream)</option>
-                            <option value="anikoto">🟢 AniKoto (Multi-Server)</option>
-                            <option value="aniwaves">🟢 AniWaves (Vidplay/Filemoon)</option>
+                            <option value="kaa">🟢 Kaa (VidStreaming - Ultra Fast)</option>
+                            <option value="animegg">🟢 AnimeGG (Direct MP4 - High Speed)</option>
+                            <option value="anikoto">🟢 AniKoto (Multi-Server HD)</option>
                             <option value="anizone">🟢 AniZone (Fast CDN)</option>
-                            <option value="kaa">🟢 Kaa (VidStreaming)</option>
-                            <option value="animegg">🟢 AnimeGG (Direct MP4)</option>
+                            <option value="aniwaves">🟢 AniWaves (Vidplay/Filemoon)</option>
                         </select>
                     </div>
                     <span style="font-size:0.78rem; color:var(--text-muted);" id="streamInfoStatus">Ready to stream</span>
@@ -2357,14 +2357,26 @@
                     return;
                 }
 
-                document.getElementById('streamInfoStatus').textContent = `Loaded from ${data.provider} (${activeStreams.length} stream${activeStreams.length > 1 ? 's' : ''})`;
+                failedStreamUrls.clear();
+                const playableStreams = activeStreams.filter(s => s && s.type && s.type !== 'download');
+
+                if (playableStreams.length === 0 && activeStreams.length === 0) {
+                    document.getElementById('streamInfoStatus').textContent = `No streams returned for Episode ${ep}`;
+                    showToast(`No streams found for Episode ${ep}`);
+                    return;
+                }
+
+                const streamPool = playableStreams.length > 0 ? playableStreams : activeStreams;
+                document.getElementById('streamInfoStatus').textContent = `Loaded from ${data.provider} (${streamPool.length} stream${streamPool.length > 1 ? 's' : ''})`;
 
                 // Render dynamic server buttons matching available streams
-                updateServerPills(activeStreams);
+                updateServerPills(streamPool);
 
-                // Prefer DatSaV (MP4) stream, otherwise Vidplay or first stream
-                let target = activeStreams.find(s => (s.server && s.server.toLowerCase().includes('datsav')) || s.type === 'mp4');
-                if (!target) target = activeStreams.find(s => s.type === 'hls') || activeStreams[0];
+                // Target priority: VidStreaming / DatSaV -> Clean MP4 -> HLS -> first available
+                let target = streamPool.find(s => s.server && (s.server.toLowerCase().includes('vidstreaming') || s.server.toLowerCase().includes('datsav')));
+                if (!target) target = streamPool.find(s => s.type === 'mp4' && s.url && s.url.includes('.mp4'));
+                if (!target) target = streamPool.find(s => s.type === 'hls');
+                if (!target) target = streamPool[0];
 
                 // Fetch accurate AniSkip timestamps for Intro & Outro
                 try {
@@ -2393,33 +2405,36 @@
             const container = document.getElementById('serverPillsList');
             if (!container) return;
 
-            const hasDatSav = streams.some(s => (s.server && s.server.toLowerCase().includes('datsav')) || s.type === 'mp4');
-            const hasVidplay = streams.some(s => (s.server && s.server.toLowerCase().includes('vidplay')) || s.type === 'hls');
+            const playable = streams.filter(s => s && s.type && s.type !== 'download');
+            const seenServers = new Set();
+            const uniqueServers = [];
 
-            const otherServers = [];
-            streams.forEach(s => {
-                const sName = s.server || '';
-                if (sName && !sName.toLowerCase().includes('datsav') && !sName.toLowerCase().includes('vidplay') && !otherServers.includes(sName)) {
-                    otherServers.push(sName);
+            playable.forEach(s => {
+                const sName = s.server || (s.type === 'mp4' ? 'Direct MP4' : 'HLS Stream');
+                if (!seenServers.has(sName)) {
+                    seenServers.add(sName);
+                    uniqueServers.push({
+                        name: sName,
+                        type: s.type || 'hls',
+                        stream: s
+                    });
                 }
             });
 
-            let html = `
-                <button class="server-pill-datsav ${hasDatSav ? 'active' : ''}" id="btnDatSavPill" onclick="selectServerByName('DatSaV')">
-                    <span class="pill-main">DatSaV</span>
-                    <span class="pill-sub">(MP4)</span>
-                </button>
-                <button class="server-pill-secondary ${!hasDatSav && hasVidplay ? 'active' : ''}" id="btnVidplayPill" onclick="selectServerByName('Vidplay')">
-                    <span class="pill-main">Vidplay</span>
-                    <span class="pill-sub">(HLS)</span>
-                </button>
-            `;
+            if (uniqueServers.length === 0) {
+                container.innerHTML = '<span style="font-size:0.75rem; color:var(--text-muted);">No active server</span>';
+                return;
+            }
 
-            otherServers.forEach(srv => {
+            let html = '';
+            uniqueServers.forEach((srv, idx) => {
+                const isPrimary = (srv.stream.type === 'mp4' || srv.name.toLowerCase().includes('datsav') || srv.name.toLowerCase().includes('vidstreaming'));
+                const btnClass = isPrimary ? 'server-pill-datsav' : 'server-pill-secondary';
+                const subText = srv.stream.type === 'mp4' ? '(MP4)' : (srv.stream.type === 'embed' ? '(Embed)' : '(HLS)');
                 html += `
-                    <button class="server-pill-secondary" id="btnServer_${srv}" onclick="selectServerByName('${escapeHtml(srv)}')">
-                        <span class="pill-main">${escapeHtml(srv)}</span>
-                        <span class="pill-sub">(Stream)</span>
+                    <button class="${btnClass} ${idx === 0 ? 'active' : ''}" id="btnServer_${escapeHtml(srv.name)}" onclick="selectServerByName('${escapeHtml(srv.name)}')">
+                        <span class="pill-main">${escapeHtml(srv.name)}</span>
+                        <span class="pill-sub">${subText}</span>
                     </button>
                 `;
             });
@@ -2431,15 +2446,12 @@
             const norm = (serverName || '').toLowerCase();
             document.querySelectorAll('#serverPillsList button').forEach(b => b.classList.remove('active'));
 
-            if (norm.includes('datsav')) {
-                const b = document.getElementById('btnDatSavPill');
-                if (b) b.classList.add('active');
-            } else if (norm.includes('vidplay')) {
-                const b = document.getElementById('btnVidplayPill');
-                if (b) b.classList.add('active');
-            } else {
-                const b = document.getElementById(`btnServer_${serverName}`);
-                if (b) b.classList.add('active');
+            const allButtons = document.querySelectorAll('#serverPillsList button');
+            for (const b of allButtons) {
+                if (b.id === `btnServer_${serverName}` || b.innerText.toLowerCase().includes(norm)) {
+                    b.classList.add('active');
+                    break;
+                }
             }
         }
 
@@ -2608,20 +2620,22 @@
                                     }
                                 });
 
+                                let hlsRetryCount = 0;
                                 hls.on(Hls.Events.ERROR, function (event, data) {
                                     if (data.fatal) {
-                                        console.warn("HLS Error:", data.type, data.details);
-                                        switch (data.type) {
-                                            case Hls.ErrorTypes.NETWORK_ERROR:
-                                                hls.startLoad();
-                                                break;
-                                            case Hls.ErrorTypes.MEDIA_ERROR:
-                                                hls.recoverMediaError();
-                                                break;
-                                            default:
-                                                hls.destroy();
-                                                break;
+                                        console.warn("HLS Fatal Error:", data.type, data.details);
+                                        if (data.type === Hls.ErrorTypes.NETWORK_ERROR && hlsRetryCount < 2) {
+                                            hlsRetryCount++;
+                                            hls.startLoad();
+                                            return;
                                         }
+                                        if (data.type === Hls.ErrorTypes.MEDIA_ERROR && hlsRetryCount < 2) {
+                                            hlsRetryCount++;
+                                            hls.recoverMediaError();
+                                            return;
+                                        }
+                                        try { hls.destroy(); } catch (e) {}
+                                        triggerStreamFailover(stream);
                                     }
                                 });
                             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
@@ -2895,6 +2909,7 @@
 
                 artPlayer.on('error', (err) => {
                     console.warn("Artplayer playback event error:", err);
+                    triggerStreamFailover(stream);
                 });
 
             } catch (playerErr) {
@@ -3182,30 +3197,65 @@
             currentActiveSkipType = null;
         }
 
+        const failedStreamUrls = new Set();
+        let failoverLock = false;
+
+        function triggerStreamFailover(failedStream) {
+            if (failoverLock) return;
+            failoverLock = true;
+            setTimeout(() => { failoverLock = false; }, 1500);
+
+            if (failedStream && failedStream.url) {
+                failedStreamUrls.add(failedStream.url);
+            }
+            const playableStreams = (activeStreams || []).filter(s => s && s.type && s.type !== 'download');
+            const nextStream = playableStreams.find(s => s.url && !failedStreamUrls.has(s.url));
+            if (nextStream) {
+                showToast(`Server issue. Trying backup [${nextStream.server || nextStream.type}]...`);
+                renderArtPlayer(nextStream);
+            } else if (currentProvider !== 'kaa' && currentProvider !== 'animegg') {
+                showToast(`Provider offline. Switching to high-speed backup (Kaa)...`);
+                switchProvider('kaa');
+            } else if (currentProvider === 'kaa') {
+                showToast(`Switching to backup provider (AnimeGG)...`);
+                switchProvider('animegg');
+            } else {
+                showToast("Stream playback error. Try another episode.");
+            }
+        }
+
         function selectServerByName(serverName) {
-            const norm = serverName.toLowerCase();
-            let match = activeStreams.find(s => 
+            const norm = (serverName || '').toLowerCase();
+            const playable = (activeStreams || []).filter(s => s && s.type && s.type !== 'download');
+            let match = playable.find(s => 
                 (s.server && s.server.toLowerCase() === norm) ||
-                (norm === 'datsav' && (s.type === 'mp4' || (s.server && s.server.toLowerCase().includes('datsav')))) ||
-                (norm === 'vidplay' && (s.type === 'hls' || (s.server && s.server.toLowerCase().includes('vidplay'))))
+                (s.server && s.server.toLowerCase().includes(norm)) ||
+                (norm.includes('datsav') && (s.type === 'mp4' || (s.server && s.server.toLowerCase().includes('datsav')))) ||
+                (norm.includes('vidplay') && (s.type === 'hls' || (s.server && s.server.toLowerCase().includes('vidplay')))) ||
+                (norm.includes('vidstreaming') && (s.server && s.server.toLowerCase().includes('vidstreaming')))
             );
 
             if (match) {
                 renderArtPlayer(match);
                 showToast(`Switched to [${serverName}]`);
             } else {
-                if (norm === 'datsav') {
-                    showToast(`DatSaV (MP4) is not on this episode. Playing Vidplay (HLS).`);
-                    const fallback = activeStreams.find(s => s.type === 'hls') || activeStreams[0];
-                    if (fallback) renderArtPlayer(fallback);
+                const fallback = playable.find(s => s.type === 'hls') || playable[0];
+                if (fallback) {
+                    renderArtPlayer(fallback);
+                    showToast(`Playing server [${fallback.server || fallback.type}]`);
                 } else {
-                    showToast(`${serverName} not available for this episode`);
+                    showToast(`${serverName} not available`);
                 }
             }
         }
 
         function switchProvider(prov) {
             currentProvider = prov;
+            failedStreamUrls.clear();
+            const sel = document.getElementById('providerSelect');
+            if (sel && sel.value !== prov) {
+                sel.value = prov;
+            }
             loadStream(currentEpisode);
         }
 

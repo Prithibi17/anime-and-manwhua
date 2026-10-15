@@ -219,6 +219,15 @@ async def proxy_m3u8(url: str, referer: str):
                     lines.append(line)
                     continue
 
+                # Handle URI inside EXT-X-KEY (AES decryption keys)
+                if stripped.startswith('#EXT-X-KEY:'):
+                    def _sub_key(m):
+                        key_url = urljoin(url, m.group(1))
+                        return f'URI="/proxy_segment?url={quote(key_url, safe="")}&referer={quote(referer, safe="")}"'
+                    line = re.sub(r'URI="([^"]+)"', _sub_key, line)
+                    lines.append(line)
+                    continue
+
                 if stripped.startswith('#EXT-X-STREAM-INF:') or stripped.startswith('#EXT-X-I-FRAME-STREAM-INF:'):
                     is_variant = True
                     lines.append(line)
@@ -230,6 +239,11 @@ async def proxy_m3u8(url: str, referer: str):
 
                 # Non-comment line (URL)
                 absolute_url = urljoin(url, stripped)
+                parsed_abs = urlparse(absolute_url)
+                parsed_base = urlparse(url)
+                if not parsed_abs.query and parsed_base.query:
+                    absolute_url = f"{absolute_url}?{parsed_base.query}"
+
                 if is_variant or '.m3u8' in stripped.lower():
                     line = f"/proxy_m3u8?url={quote(absolute_url, safe='')}&referer={quote(referer, safe='')}"
                 else:
@@ -239,6 +253,8 @@ async def proxy_m3u8(url: str, referer: str):
 
             res_headers = {
                 "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "*",
+                "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
                 "Cache-Control": "public, max-age=3600"
             }
             return Response(content='\n'.join(lines), media_type="application/vnd.apple.mpegurl", headers=res_headers)
@@ -266,10 +282,20 @@ async def proxy_segment(url: str, referer: str, request: Request):
             if range_h:
                 h["Range"] = range_h
             resp = await client.get(url, headers=h)
+
+            content_type = resp.headers.get("content-type")
+            if not content_type or "text/plain" in content_type:
+                if url.endswith(".key") or "/keys/" in url or len(resp.content) == 16:
+                    content_type = "application/octet-stream"
+                else:
+                    content_type = "video/mp2t"
+
             res_h = {
-                "Content-Type": "video/mp2t",
+                "Content-Type": content_type,
                 "Accept-Ranges": "bytes",
                 "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "*",
+                "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
                 "Cache-Control": "public, max-age=86400"
             }
             if "content-range" in resp.headers:
@@ -278,6 +304,17 @@ async def proxy_segment(url: str, referer: str, request: Request):
     except Exception as e:
         print(f"[PROXY] segment proxy error: {e}")
         return Response(content=b"", status_code=502, headers={"Access-Control-Allow-Origin": "*"})
+
+
+@app.options("/proxy_segment")
+@app.options("/proxy_m3u8")
+@app.options("/proxy_mp4")
+async def proxy_cors_options():
+    return Response(content="", status_code=200, headers={
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+    })
 
 
 @app.get("/proxy_mp4")
